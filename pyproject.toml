@@ -1,0 +1,11 @@
+[project]
+name = "whisper_asr_colab"
+version = "1.0.0"
+
+dependencies =  [
+    # "whisperx@git+https://github.com/m-bain/whisperX.git",
+    "whisperx",
+    "python-docx",
+    "yt-dlp",
+    "ffmpeg-python",
+]
