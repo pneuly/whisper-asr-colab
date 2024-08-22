@@ -28,13 +28,13 @@ def combine_same_speaker(segments):
     return _combined
 
 
-def diarize(input_path, asr_result, hugging_face_token):
+def diarize(audio, asr_result, hugging_face_token):
     diarize_model = whisperx.DiarizationPipeline(
         use_auth_token=hugging_face_token,
         device = "cuda" if torch.cuda.is_available() else "cpu"
     )
 
-    diarize_segments = diarize_model(input_path)
+    diarize_segments = diarize_model(audio)
     result = whisperx.assign_word_speakers(diarize_segments, asr_result)
     segments = [
         {k: v for k, v in d.items() if k != 'words'}

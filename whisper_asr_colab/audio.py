@@ -5,10 +5,9 @@ import subprocess
 import fcntl
 import ffmpeg
 
-def dl_audio(url, password=""):
+def dl_audio(url: str, password: str = ""):
     """Download file from Internet"""
-    # YoutubeDLクラスを使うとダウンロードエラーが発生するため
-    # 外部コマンドを使用
+    # YoutubeDL class causes download errors, using external command instead
     options = ["-x", "-S", "+acodec:mp4a", "-o", "%(title)s.%(ext)s"]
     if password:
         options += ["--video-password", password]
@@ -21,7 +20,11 @@ def dl_audio(url, password=""):
     return outfilename
 
 
-def trim_audio(audiopath, start_time=None, end_time=None):
+def trim_audio(
+        audiopath: str,
+        start_time: str = "",
+        end_time: str = ""
+    ):
     if start_time and end_time:
         input = ffmpeg.input(audiopath, ss=start_time, to=end_time)
     elif not start_time and end_time:
@@ -71,4 +74,3 @@ def subprocess_progress(cmd: list):
         if p.poll() is not None:
             break
         time.sleep(0.5)
-
