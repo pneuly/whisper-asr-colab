@@ -2,7 +2,6 @@ import sys
 import os
 import time
 import subprocess
-import fcntl
 import ffmpeg
 
 def dl_audio(url: str, password: str = ""):
@@ -64,13 +63,15 @@ def subprocess_progress(cmd: list):
     p = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=False
     )
-    flag = fcntl.fcntl(p.stdout.fileno(), fcntl.F_GETFL)
-    fcntl.fcntl(p.stdout.fileno(), fcntl.F_SETFL, flag | os.O_NONBLOCK)
-    while True:
-        buf = p.stdout.read()
-        if buf is not None:
-            sys.stdout.write(buf)
-            sys.stdout.flush()
-        if p.poll() is not None:
-            break
-        time.sleep(0.5)
+    if os.name != "nt":
+        import fcntl
+        flag = fcntl.fcntl(p.stdout.fileno(), fcntl.F_GETFL)
+        fcntl.fcntl(p.stdout.fileno(), fcntl.F_SETFL, flag | os.O_NONBLOCK)
+        while True:
+            buf = p.stdout.read()
+            if buf is not None:
+                sys.stdout.write(buf)
+                sys.stdout.flush()
+            if p.poll() is not None:
+                break
+            time.sleep(0.5)

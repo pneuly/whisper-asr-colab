@@ -6,10 +6,9 @@ import torch
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Union
-from google.colab import files
 from .docx_generator import DocxGenerator
 from .audio import dl_audio, trim_audio
-from .utils import write_asr_result, write_diarize_result
+from .utils import write_asr_result, write_diarize_result, download_from_colab
 from .asr import whisperx_transcribe, faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize
 
@@ -63,7 +62,7 @@ class Worker:
             result = whisperx_transcribe(
                 audio=self.input_audio,
                 chunk_size=self.chunk_size,
-                batch_size=self.chunk_size,
+                batch_size=self.batch_size,
                 model_size=self.model_size,
                 initial_prompt=self.initial_prompt
                 )
@@ -82,7 +81,7 @@ class Worker:
             self.timestamp_offset
         )
         for filename in outfiles:
-            files.download(filename)
+            download_from_colab(filename)
 
         if self.diarization:
             # Diarize
@@ -96,7 +95,7 @@ class Worker:
                 segments,
                 self.timestamp_offset
             )
-            files.download(filename)
+            download_from_colab(filename)
 
         # gc GPU RAM
         #del segments
@@ -106,11 +105,11 @@ class Worker:
         if self.diarization:
             doc = DocxGenerator()
             doc.txt_to_word(filename)
-            files.download(doc.docfilename)
+            download_from_colab(doc.docfilename)
 
         # DL audio file
         if not self.audio == self.input_audio:
-            files.download(self.input_audio)
+            download_from_colab(self.input_audio)
 
     def run(self):
         self.transcribe()

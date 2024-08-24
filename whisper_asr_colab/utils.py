@@ -55,3 +55,8 @@ def write_diarize_result(basename, segments, timestamp_offset=None):
         fh.write(segment["text"].replace(" ", "") + "\n\n")
     fh.close()
     return outfilename
+
+def download_from_colab(filepath):
+    if str(get_ipython()).startswith("<google.colab."):
+        from google.colab import files
+        files.download(filepath)

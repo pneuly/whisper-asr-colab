@@ -34,8 +34,8 @@ def diarize(audio, asr_result, hugging_face_token):
         device = "cuda" if torch.cuda.is_available() else "cpu"
     )
 
-    diarize_segments = diarize_model(audio)
-    result = whisperx.assign_word_speakers(diarize_segments, asr_result)
+    diarized_result = diarize_model(audio)
+    result = whisperx.assign_word_speakers(diarized_result, asr_result, fill_nearest=True)
     segments = [
         {k: v for k, v in d.items() if k != 'words'}
         for d in result["segments"]]
