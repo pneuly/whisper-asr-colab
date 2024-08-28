@@ -2,34 +2,48 @@ import sys
 import os
 import re
 import time
-import torch
-import numpy as np
+import logging
+from torch.cuda import empty_cache
+from numpy import ndarray
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional, Union, Iterable
 from .docx_generator import DocxGenerator
 from .audio import dl_audio, trim_audio
 from .utils import write_asr_result, write_diarize_result, download_from_colab
-from .asr import whisperx_transcribe, faster_whisper_transcribe, realtime_transcribe
+from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize
+
 
 @dataclass
 class Worker:
-    audio: Union[str, np.ndarray] = "" # original audio path or data
+    # model options
     model_size: str = "large-v3"
+    device: str = "auto"
+
+    # transcribe options
+    audio: Union[str, ndarray] = "" # original audio path or data
+    language: Optional[str] = None
+    initial_prompt: Optional[Union[str, Iterable[int]]] = None
+    hotwords: Optional[str] = None
+    chunk_length: int = 30
+    batch_size: int = 16
+    prefix: Optional[str] = None
+    vad_filter: bool = False,
+    log_progress: bool = False
+
+    # other options
     diarization: bool = True
+    hugging_face_token: str = ""
     password: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     timestamp_offset: Optional[str] = None
-    initial_prompt: Optional[str] = None
     realtime: bool = False
-    chunk_size: int = 20
-    batch_size: int = 16
-    hugging_face_token: str = ""
-    _input_audio: Union[str, np.ndarray] = "" # audio input to pass to whisper
+
+    _input_audio: Union[str, ndarray] = "" # audio input to pass to whisper
 
     @property
-    def input_audio(self) -> Union[str, np.ndarray]:
+    def input_audio(self) -> Union[str, ndarray]:
         return self._input_audio
 
     def __post_init__(self):
@@ -54,30 +68,29 @@ class Worker:
     def transcribe(self):
         # Transcribe
         if self.realtime: # realtime trascription
-            realtime_transcribe(self.audio, self.model_size, self.initial_prompt)
-            del self.model_size
-            torch.cuda.empty_cache()
+            realtime_transcribe(
+                url = self.audio,
+                model_size = self.model_size,
+                language = self.language,
+                initial_prompt = self.initial_prompt
+            )
+            empty_cache()
             sys.exit(0)
-        elif self.diarization: # use WhisperX
-            result = whisperx_transcribe(
-                audio=self.input_audio,
-                chunk_size=self.chunk_size,
-                batch_size=self.batch_size,
-                model_size=self.model_size,
-                initial_prompt=self.initial_prompt
-                )
-            segments = result["segments"]
         else:  # use faster-whisper
-            segments = faster_whisper_transcribe(
+            asr_segments, _ = faster_whisper_transcribe(
                 audio=self.input_audio,
                 model_size=self.model_size,
-                initial_prompt=self.initial_prompt
-                )
+                initial_prompt=self.initial_prompt,
+                hotwords = self.hotwords,
+                prefix = self.prefix,
+                #chunk_length=self.chunk_length,
+                batch_size=self.batch_size,
+            )
 
         # write results to text files
         outfiles = write_asr_result(
             os.path.basename(self.input_audio),
-            segments,
+            asr_segments,
             self.timestamp_offset
         )
         for filename in outfiles:
@@ -87,9 +100,10 @@ class Worker:
             # Diarize
             segments = diarize(
                 audio=self.input_audio,
-                asr_result=result,
+                asr_segments=asr_segments,
                 hugging_face_token=self.hugging_face_token,
             )
+            logging.info(f"Diarized segments:\n{segments}")
             filename = write_diarize_result(
                 f"{os.path.basename(self.input_audio)}",
                 segments,
@@ -99,7 +113,7 @@ class Worker:
 
         # gc GPU RAM
         #del segments
-        torch.cuda.empty_cache()
+        empty_cache()
 
         # Generate docx
         if self.diarization:

@@ -3,6 +3,7 @@ import os
 import time
 import subprocess
 import ffmpeg
+from numpy import frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 
 def dl_audio(url: str, password: str = ""):
     """Download file from Internet"""
@@ -38,6 +39,24 @@ def trim_audio(
             )
     return input_path
 
+def load_audio(file: str, sr: int = 16000):
+    try:
+        cmd = [
+            "ffmpeg",
+            "-nostdin",
+            "-threads", "0",
+            "-i", file,
+            "-f", "s16le",
+            "-ac", "1",
+            "-acodec", "pcm_s16le",
+            "-ar", str(sr),
+            "-",
+        ]
+        out = subprocess.run(cmd, capture_output=True, check=True).stdout
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+
+    return np_frombuffer(out, np_int16).flatten().astype(np_float32) / 32768.0
 
 def open_stream(url):
     command = ["yt-dlp", "-g", url, "-x", "-S", "+acodec:mp4a"]
