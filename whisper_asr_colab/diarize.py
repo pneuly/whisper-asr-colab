@@ -36,8 +36,11 @@ class DiarizationPipeline:
         self,
         model_name="pyannote/speaker-diarization-3.1",
         use_auth_token=None,
-        device: Optional[Union[str, torch_device]] = "cpu",
+        device: Optional[Union[str, torch_device]] = "auto",
     ):
+        if device == "auto":
+            device = "cuda" if cuda_is_available() else "cpu"
+            logging.info(f"Using device {device}")
         if isinstance(device, str):
             device = torch_device(device)
         self.model = Pipeline.from_pretrained(model_name, use_auth_token=use_auth_token).to(device)
@@ -130,11 +133,11 @@ def assign_word_speakers(
 def diarize(audio, asr_segments, hugging_face_token) -> List[DiarizedSegment]:
     diarize_model = DiarizationPipeline(
         use_auth_token=hugging_face_token,
-        device = "cuda" if cuda_is_available() else "cpu"
     )
     diarized_result = diarize_model(audio)
     logging.info(f"diarized_result: {diarized_result}")
     logging.info(">>performing assign_word_speakers...")
     segments = assign_word_speakers(diarized_result, asr_segments, fill_nearest=False)
+    segments = fill_missing_speakers(segments)
     segments = combine_same_speaker(segments)
     return segments

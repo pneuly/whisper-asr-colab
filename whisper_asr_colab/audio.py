@@ -15,6 +15,7 @@ def dl_audio(url: str, password: str = ""):
         ["yt-dlp", "--print", "filename"] + options + [url],
         capture_output=True,
         text=True,
+        encoding="utf-8"
     ).stdout.strip()
     subprocess_progress(["yt-dlp"] + options + [url])
     return outfilename
@@ -58,7 +59,7 @@ def load_audio(file: str, sr: int = 16000):
 
     return np_frombuffer(out, np_int16).flatten().astype(np_float32) / 32768.0
 
-def open_stream(url):
+def open_stream(url: str):
     command = ["yt-dlp", "-g", url, "-x", "-S", "+acodec:mp4a"]
     audio_url = subprocess.check_output(command).decode("utf-8").strip()
     return subprocess.Popen(
