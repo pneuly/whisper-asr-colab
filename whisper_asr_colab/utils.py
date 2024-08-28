@@ -47,7 +47,7 @@ def write_asr_result(
         basename: str,
         segments: List[Union[Segment, DiarizedSegment]],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
-        ) -> List[str]:
+        ) -> tuple[str, ...]:
     outfilenames = (f"{basename}.txt", f"{basename}_timestamped.txt")
     filehandles = [open(filename, "w", encoding="utf-8") for filename in outfilenames]
     for segment in segments:
@@ -62,18 +62,18 @@ def write_diarize_result(
         basename: str,
         segments: List[Union[Segment, DiarizedSegment]],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
-        ) -> str:
+        ) -> tuple[str, ...]:
     outfilename = f"{basename}_diarized.txt"
     fh = open(outfilename, "w", encoding="utf-8")
     for segment in segments:
         fh.write(time_segment_text(segment, timestamp_offset) + " ")
-        try:
+        if segment.speaker:
             fh.write(segment.speaker + "\n")
-        except:
+        else:
             fh.write("\n")
         fh.write(segment.text.replace(" ", "") + "\n\n")
     fh.close()
-    return outfilename
+    return (outfilename,)
 
 def download_from_colab(filepath: str):
     if str(get_ipython()).startswith("<google.colab."):

@@ -1,5 +1,7 @@
+import logging
 from pathlib import Path
 from docx import Document
+from typing import Optional
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.enum.style import WD_STYLE_TYPE
@@ -18,16 +20,16 @@ def create_attribute(element, name, value):
 
 
 class DocxGenerator():
-    def __init__(self, doc=None):
+    def __init__(self, doc: Optional[Document] = None):
         # Create a new Word document
         self.doc = doc if doc else Document()
         self.txtfilename = ""
-        self.doctxtname = ""
+        self.docfilename = ""
         self.styles = {
             "normal" : self.doc.styles['Normal'],
             "speaker" : self.doc.styles["Heading 1"],
-            "ts1" : self.doc.styles.add_style('発言1行目', WD_STYLE_TYPE.PARAGRAPH),
-            "ts2" : self.doc.styles.add_style('発言2行目', WD_STYLE_TYPE.PARAGRAPH),
+            "ts1" : self.doc.styles.add_style('FirstParagraph', WD_STYLE_TYPE.PARAGRAPH),
+            "ts2" : self.doc.styles.add_style('SecondParagraph', WD_STYLE_TYPE.PARAGRAPH),
         }
 
         self.init_document()
@@ -87,7 +89,7 @@ class DocxGenerator():
         run._r.append(instrText)
         run._r.append(fldChar2)
 
-    def txt_to_word(self, txtfilename):
+    def txt_to_word(self, txtfilename: str):
         self.txtfilename = txtfilename
         # Open the text file in read mode with utf8 encoding
         with open(txtfilename, 'r', encoding='utf8') as f:
@@ -115,5 +117,5 @@ class DocxGenerator():
             self.doc.paragraphs[-1].add_run(line.strip())
             pline_count += 1
 
-            self.docfilename = f"{Path(txtfilename).stem}.docx"
-            self.doc.save(self.docfilename)
+        self.docfilename = f"{Path(txtfilename).stem}.docx"
+        self.doc.save(self.docfilename)

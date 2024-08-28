@@ -1,6 +1,6 @@
 [project]
 name = "whisper_asr_colab"
-version = "1.0.2"
+version = "1.0.3"
 
 dependencies =  [
     "faster-whisper@git+https://github.com/SYSTRAN/faster-whisper.git",
