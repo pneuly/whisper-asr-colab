@@ -15,6 +15,7 @@ def faster_whisper_transcribe(
     # transcribe options
     audio: Union[str, ndarray] = "",
     language: Optional[str] = None,
+    multilingual: bool = False,
     initial_prompt: Optional[Union[str, Iterable[int]]] = None,
     hotwords: Optional[str] = None,
     chunk_length: int = 30,
@@ -37,6 +38,7 @@ def faster_whisper_transcribe(
         segments_generator, info = batched_model.transcribe(
             audio=audio,
             language=language,
+            multilingual=multilingual,
             initial_prompt=initial_prompt,
             hotwords=hotwords,
             prefix=prefix,
@@ -49,6 +51,7 @@ def faster_whisper_transcribe(
         segments_generator, info = model.transcribe(
             audio=audio,
             language=language,
+            multilingual=multilingual,
             vad_filter=vad_filter,
             initial_prompt=initial_prompt,
             hotwords=hotwords,

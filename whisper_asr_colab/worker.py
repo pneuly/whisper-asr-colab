@@ -23,6 +23,7 @@ class Worker:
     # transcribe options
     audio: Union[str, ndarray] = "" # original audio path or data
     language: Optional[str] = None
+    multilingual: bool = False
     initial_prompt: Optional[Union[str, Iterable[int]]] = None
     hotwords: Optional[str] = None
     chunk_length: int = 30
@@ -76,6 +77,7 @@ class Worker:
                 url = self.audio,
                 model_size = self.model_size,
                 language = self.language,
+                multilingual=self.multilingual,
                 initial_prompt = self.initial_prompt
             )
             empty_cache()
@@ -85,6 +87,7 @@ class Worker:
                 audio=self.input_audio,
                 model_size=self.model_size,
                 language = self.language,
+                multilingual=self.multilingual,
                 initial_prompt=self.initial_prompt,
                 hotwords = self.hotwords,
                 prefix = self.prefix,
