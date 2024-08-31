@@ -3,7 +3,7 @@
 It also provides memory-efficient audio loading and diarization, features ported from [WhisperX](https://github.com/m-bain/whisperX) .
 
 ## Usage
-Open [whisper_asr_colab.ipynb](https://github.com/pneuly/whisper-asr-colab/blob/main/whisper_asr_colab.ipynb) on Google Colab, or use the modules as shown below.
+Open [whisper_asr_colab.ipynb](https://github.com/pneuly/whisper-asr-colab/blob/main/whisper_asr_colab.ipynb) on Google Colab or use the modules as shown below.
 ```python
 from whisper_asr_colab.worker import Worker
 

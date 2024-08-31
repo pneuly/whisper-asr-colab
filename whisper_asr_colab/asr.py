@@ -1,11 +1,12 @@
 import time
 import datetime
-import logging
+from logging import getLogger
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 from typing import Union, Optional, Iterable
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from .audio import load_audio, open_stream
 
+logger = getLogger(__name__)
 
 def faster_whisper_transcribe(
     # model options
@@ -27,7 +28,7 @@ def faster_whisper_transcribe(
     # other options
     realtime: bool = False,
     ):
-    logging.debug(f"batich_size: {batch_size}")
+    logger.debug(f"batich_size: {batch_size}")
     model = FasterWhisperModel(
         model_size,
         device=device,
@@ -50,7 +51,7 @@ def faster_whisper_transcribe(
             log_progress=log_progress,
         )
     else: # sequential mode
-        logging.info(f"batch_size is set to less than 2. ({batch_size}). Using equential mode.")
+        logger.info(f"batch_size is set to less than 2. ({batch_size}). Using equential mode.")
         if isinstance(audio, str):
             audio = load_audio(audio)
         segments_generator, info = model.transcribe(
@@ -68,7 +69,7 @@ def faster_whisper_transcribe(
     for segment in segments_generator:
         print(segment.text)
         segments.append(segment)
-    logging.info(f"Transcribed segments:\n{segments}")
+    logger.info(f"Transcribed segments:\n{segments}")
     return segments, info
 
 def realtime_transcribe(
