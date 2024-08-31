@@ -4,7 +4,7 @@ import logging
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 from typing import Union, Optional, Iterable
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
-from .audio import open_stream
+from .audio import load_audio, open_stream
 
 
 def faster_whisper_transcribe(
@@ -35,10 +35,13 @@ def faster_whisper_transcribe(
     )
     if batch_size > 1: # batch mode
         batched_model = BatchedInferencePipeline(model=model)
+        # load_audio prevents excessive memory use by avoiding loading large audio file all at once.
+        if isinstance(audio, str):
+            audio = load_audio(audio)
         segments_generator, info = batched_model.transcribe(
             audio=audio,
             language=language,
-            multilingual=multilingual,
+            #multilingual=multilingual,
             initial_prompt=initial_prompt,
             hotwords=hotwords,
             prefix=prefix,
@@ -48,6 +51,8 @@ def faster_whisper_transcribe(
         )
     else: # sequential mode
         logging.info(f"batch_size is set to less than 2. ({batch_size}). Using equential mode.")
+        if isinstance(audio, str):
+            audio = load_audio(audio)
         segments_generator, info = model.transcribe(
             audio=audio,
             language=language,
