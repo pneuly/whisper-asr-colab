@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools", "setuptools_scm"]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "whisper_asr_colab"
-version = "1.0.3"
+dynamic = ["version"]
 
 dependencies =  [
     "faster-whisper@git+https://github.com/SYSTRAN/faster-whisper.git",
@@ -24,4 +24,4 @@ exclude = ["build", "tests"]
 version = {attr = "version"}
 
 [tool.setuptools_scm]
-write_to = "_version.py"
+version_file = "whisper_asr_colab/_version.py"
