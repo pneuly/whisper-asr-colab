@@ -1,10 +1,6 @@
-import os
 from whisper_asr_colab.asr import faster_whisper_transcribe
 
-data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-audio = os.path.join(data_dir, "asr_test.m4a")
-
-def perform_asr(audio, batch_size):
+def perform_asr(audio:str, batch_size:int):
     segments, info = faster_whisper_transcribe(
         model_size="tiny",
         audio=audio,

@@ -21,7 +21,7 @@ dependencies =  [
 exclude = ["build", "tests"]
 
 [tool.setuptools.dynamic]
-version = {attr = "version"}
+version = {attr = "whisper_asr_colab.__version__"}
 
 [tool.setuptools_scm]
 version_file = "whisper_asr_colab/_version.py"
