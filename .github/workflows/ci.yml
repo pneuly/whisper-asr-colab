@@ -20,14 +20,17 @@ jobs:
           cache: 'pip'
 
       - name: Install FFmpeg
-        run: |
-          sudo apt-get install -y ffmpeg
+        run: sudo apt-get install -y ffmpeg
 
       - name: Install module
         run: |
-          pip install -e .
+          pip install .
           pip install pytest
 
       - name: Run pytest
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           pytest -v tests/test_asr.py
+          pytest -v tests/test_diarize.py
+          pytest -v tests/test_docx_generator.py

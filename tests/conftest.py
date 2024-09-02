@@ -11,7 +11,7 @@ def audio(data_dir) -> str:
 
 @pytest.fixture
 def asr_segments_file(data_dir) -> str:
-    return os.path.join(data_dir, "asr_test.m4a_segments.txt")
+    return os.path.join(data_dir, "asr_test.m4a_segments.json")
 
 @pytest.fixture
 def diarized_transcript(data_dir) -> str:
