@@ -4,7 +4,7 @@ def perform_asr(audio:str, batch_size:int):
     segments, info = faster_whisper_transcribe(
         model_size="tiny",
         audio=audio,
-        batch_size=1,
+        batch_size=batch_size,
     )
     segments = list(segments)
     assert info.all_language_probs is not None
@@ -15,7 +15,7 @@ def perform_asr(audio:str, batch_size:int):
     return (segments, info,)
 
 def test_asr_squential(audio):
-    segments, info = perform_asr(audio, 1)
+    perform_asr(audio, 1)
 
 def test_asr_batched(audio):
-    segments, info = perform_asr(audio, 4)
+    perform_asr(audio, 4)

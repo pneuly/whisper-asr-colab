@@ -1,3 +1,4 @@
+from json import dump as jsondump, load as jsonload
 import datetime
 from typing import List, Optional, Union
 from faster_whisper.transcribe import Segment
@@ -56,6 +57,16 @@ def write_asr_result(
     filehandles[0].close()
     filehandles[1].close()
     return outfilenames
+
+def save_segments(jsonfile: str, segments: List[Segment]):
+    with open(jsonfile, 'w') as fh:
+        jsondump([segment._asdict() for segment in segments], fh)
+
+
+def load_segments(jsonfile: str) -> List[Segment]:
+    with open(jsonfile, 'r') as fh:
+        data_list = jsonload(fh)
+    return [Segment(**data) for data in data_list]
 
 
 def write_diarize_result(
