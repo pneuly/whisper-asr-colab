@@ -34,8 +34,8 @@ class DiarizedWord(NamedTuple):
 class DiarizationPipeline:
     def __init__(
         self,
-        model_name="pyannote/speaker-diarization-3.1",
-        use_auth_token=None,
+        model_name: str = "pyannote/speaker-diarization-3.1",
+        use_auth_token: Optional[str] = None,
         device: Optional[Union[str, torch_device]] = "auto",
     ):
         if device == "auto":
@@ -89,7 +89,7 @@ def combine_same_speaker(segments: List[DiarizedSegment]) -> List[DiarizedSegmen
 
 
 def assign_word_speakers(
-        diarize_df,
+        diarize_df: DataFrame,
         asr_segments: List[Segment],
         fill_nearest: bool = False
     ) -> List[DiarizedSegment]:
@@ -130,10 +130,13 @@ def assign_word_speakers(
     return diarized_segs
 
 
-def diarize(audio, asr_segments, hugging_face_token) -> List[DiarizedSegment]:
-    diarize_model = DiarizationPipeline(
-        use_auth_token=hugging_face_token,
-    )
+def diarize(
+        audio: Union[str, ndarray],
+        asr_segments: List[Segment],
+        hugging_face_token: str,
+    ) -> List[DiarizedSegment]:
+
+    diarize_model = DiarizationPipeline(use_auth_token=hugging_face_token)
     diarized_result = diarize_model(audio)
     logging.info(f"diarized_result: {diarized_result}")
     logging.info(">>performing assign_word_speakers...")

@@ -2,7 +2,7 @@ import time
 import datetime
 from logging import getLogger
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
-from typing import Union, Optional, Iterable
+from typing import Union, Optional, Iterable, TextIO
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from .audio import load_audio, open_stream
 
@@ -87,7 +87,12 @@ def realtime_transcribe(
         encoding="utf-8"
     )
 
-    def _realtime_asr_loop(model, data, outfh, initial_prompt=None):
+    def _realtime_asr_loop(
+        model: str,
+        data: bytes,
+        outfh: TextIO,
+        initial_prompt: Optional[str] = None
+        ):
         segments, _ =  model.transcribe(
             audio=np_frombuffer(data, np_int16).astype(np_float32) / 32768.0,
             language=language,
