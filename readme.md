@@ -1,6 +1,15 @@
-# Faster Whisper Imprementation on Google Colab
-**whisper-asr-colab** is an implementation of [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on Google Colab.
-It also provides memory-efficient audio loading and diarization, features ported from [WhisperX](https://github.com/m-bain/whisperX) .
+[![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/pneuly/whisper-asr-colab/blob/main/readme.md)
+[![ja](https://img.shields.io/badge/lang-ja-blue.svg)](https://github.com/pneuly/whisper-asr-colab/blob/main/readme_ja.md)
+
+# Aggregation Package for Transcription and Diarization
+**Whisper-asr-colab** is an aggregation package for speech-to-text and diarization, featuring an example implementation on Google Colab.
+
+The main functions of this package are as follows:
+* **Speech-to-text (transcription)**, powered by [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+* **Diarization**, powered by [pyannote-audio](https://github.com/pyannote/pyannote-audio)
+* **Online audio downloading**, powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+* **Memory efficient audio loading during transcription**, ported from [WhisperX](https://github.com/m-bain/whisperX)
+* **Writing diarization results in docx format**, powered by [python-docx](https://github.com/python-openxml/python-docx)
 
 ## Usage
 Open [whisper_asr_colab.ipynb](https://github.com/pneuly/whisper-asr-colab/blob/main/whisper_asr_colab.ipynb) on Google Colab or use the modules as shown below.

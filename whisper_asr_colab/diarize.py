@@ -59,18 +59,15 @@ class DiarizationPipeline:
         return diarize_df
 
 
-def fill_missing_speakers(segments: List[DiarizedSegment]) -> List[DiarizedSegment]:
-    prev = None
-    for seg in segments:
-        if seg.speaker:
-            prev = seg.speaker
-        else:
-            seg = seg._replace(speaker=prev)
-    return segments
+def _fill_missing_speakers(segments: List[DiarizedSegment]) -> None:
+    for i in range(1, len(segments)):
+        if segments[i].speaker is None:
+            segments[i] = segments[i]._replace(speaker=segments[i-1].speaker)
 
 
-def combine_same_speaker(segments: List[DiarizedSegment]) -> List[DiarizedSegment]:
-    segments = fill_missing_speakers(segments)
+def _combine_same_speakers(
+        segments: List[DiarizedSegment],
+    ) -> List[DiarizedSegment]:
     _grouped = [
         list(g) for k, g in groupby(segments, lambda x: x.speaker)
     ]
@@ -80,7 +77,7 @@ def combine_same_speaker(segments: List[DiarizedSegment]) -> List[DiarizedSegmen
             seek = segs[0].seek,
             start = segs[0].start,
             end = segs[-1].end,
-            text = "\n".join([seg.text for seg in segs]).strip(),
+            text = "\n".join(seg.text for seg in segs).strip(),
             tokens = [token for seg in segs for token in seg.tokens],
             speaker = segs[0].speaker,
          ) for segs in _grouped
@@ -88,45 +85,38 @@ def combine_same_speaker(segments: List[DiarizedSegment]) -> List[DiarizedSegmen
     return _combined
 
 
-def assign_word_speakers(
+def assign_speakers(
         diarize_df: DataFrame,
         asr_segments: List[Segment],
-        fill_nearest: bool = False
+        fill_missing_speakers: bool = True,
+        combine_same_speakers: bool = True,
     ) -> List[DiarizedSegment]:
-    # port from whisperx
+
+    def _get_speaker(start: float, end: float) -> Optional[str]:
+        diarize_df['intersection'] = np_minimum(diarize_df['end'], end) - np_maximum(diarize_df['start'], start)
+        dia_tmp = diarize_df[diarize_df['intersection'] > 0]
+        if dia_tmp.empty:
+            return None
+        return dia_tmp.groupby("speaker")["intersection"].sum().idxmax()
+
     diarized_segs = []
     for seg in asr_segments:
-        seg = DiarizedSegment(*seg)
-        # assign speaker to segment (if any)
-        diarize_df['intersection'] = np_minimum(diarize_df['end'], seg.end) - np_maximum(diarize_df['start'], seg.start)
-        diarize_df['union'] = np_maximum(diarize_df['end'], seg.end) - np_minimum(diarize_df['start'], seg.end)
-        # remove no hit, otherwise we look for closest (even negative intersection...)
-        if not fill_nearest:
-            dia_tmp = diarize_df[diarize_df['intersection'] > 0]
-        else:
-            dia_tmp = diarize_df
-        if len(dia_tmp) > 0:
-            # sum over speakers
-            speaker = dia_tmp.groupby("speaker")["intersection"].sum().sort_values(ascending=False).index[0]
-            seg = seg._replace(speaker=speaker)
-
+        seg = DiarizedSegment(
+            *seg,
+            speaker=_get_speaker(seg.start, seg.end)
+        )
         # assign speaker to words
         if seg.words is not None:
             for word in seg.words:
-                word = DiarizedWord(*word)
-                if 'start' in word:
-                    diarize_df['intersection'] = np_minimum(diarize_df['end'], word.end) - np_maximum(diarize_df['start'], word.start)
-                    diarize_df['union'] = np_maximum(diarize_df['end'], word.end) - np_minimum(diarize_df['start'], word.start)
-                    # remove no hit
-                    if not fill_nearest:
-                        dia_tmp = diarize_df[diarize_df['intersection'] > 0]
-                    else:
-                        dia_tmp = diarize_df
-                    if len(dia_tmp) > 0:
-                        # sum over speakers
-                        speaker = dia_tmp.groupby("speaker")["intersection"].sum().sort_values(ascending=False).index[0]
-                        word = word._replace(speaker=speaker)
+                word = DiarizedWord(
+                    *word,
+                    speaker=_get_speaker(word.start, word.end)
+                )
         diarized_segs.append(seg)
+    if fill_missing_speakers: #If speaker is None, fill with the previous speaker
+        _fill_missing_speakers(diarized_segs)
+    if combine_same_speakers:
+        diarized_segs = _combine_same_speakers(diarized_segs)
     return diarized_segs
 
 
@@ -140,7 +130,5 @@ def diarize(
     diarized_result = diarize_model(audio)
     logging.info(f"diarized_result: {diarized_result}")
     logging.info(">>performing assign_word_speakers...")
-    segments = assign_word_speakers(diarized_result, asr_segments, fill_nearest=False)
-    segments = fill_missing_speakers(segments)
-    segments = combine_same_speaker(segments)
+    segments = assign_speakers(diarized_result, asr_segments)
     return segments
