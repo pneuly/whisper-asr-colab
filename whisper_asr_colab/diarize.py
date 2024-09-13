@@ -65,12 +65,9 @@ def _fill_missing_speakers(segments: List[DiarizedSegment]) -> None:
             segments[i] = segments[i]._replace(speaker=segments[i-1].speaker)
 
 
-def combine_same_speakers(
+def _combine_same_speakers(
         segments: List[DiarizedSegment],
-        fill_missing_speakers : bool = True,
     ) -> List[DiarizedSegment]:
-    if fill_missing_speakers:
-        _fill_missing_speakers(segments)
     _grouped = [
         list(g) for k, g in groupby(segments, lambda x: x.speaker)
     ]
@@ -88,15 +85,16 @@ def combine_same_speakers(
     return _combined
 
 
-def assign_word_speakers(
+def assign_speakers(
         diarize_df: DataFrame,
         asr_segments: List[Segment],
-        fill_nearest: bool = False
+        fill_missing_speakers: bool = True,
+        combine_same_speakers: bool = True,
     ) -> List[DiarizedSegment]:
 
     def _get_speaker(start: float, end: float) -> str:
         diarize_df['intersection'] = np_minimum(diarize_df['end'], end) - np_maximum(diarize_df['start'], start)
-        dia_tmp = diarize_df if fill_nearest else diarize_df[diarize_df['intersection'] > 0]
+        dia_tmp = diarize_df[diarize_df['intersection'] > 0]
         if dia_tmp.empty:
             return None
         return dia_tmp.groupby("speaker")["intersection"].sum().idxmax()
@@ -115,6 +113,10 @@ def assign_word_speakers(
                     speaker=_get_speaker(word.start, word.end)
                 )
         diarized_segs.append(seg)
+    if fill_missing_speakers: #If speaker is None, fill with the previous speaker
+        _fill_missing_speakers(diarized_segs)
+    if combine_same_speakers:
+        diarized_segs = _combine_same_speakers(diarized_segs)
     return diarized_segs
 
 
@@ -128,6 +130,5 @@ def diarize(
     diarized_result = diarize_model(audio)
     logging.info(f"diarized_result: {diarized_result}")
     logging.info(">>performing assign_word_speakers...")
-    segments = assign_word_speakers(diarized_result, asr_segments, fill_nearest=False)
-    segments = combine_same_speakers(segments)
+    segments = assign_speakers(diarized_result, asr_segments)
     return segments
