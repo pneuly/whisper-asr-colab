@@ -92,7 +92,7 @@ def assign_speakers(
         combine_same_speakers: bool = True,
     ) -> List[DiarizedSegment]:
 
-    def _get_speaker(start: float, end: float) -> str:
+    def _get_speaker(start: float, end: float) -> Optional[str]:
         diarize_df['intersection'] = np_minimum(diarize_df['end'], end) - np_maximum(diarize_df['start'], start)
         dia_tmp = diarize_df[diarize_df['intersection'] > 0]
         if dia_tmp.empty:

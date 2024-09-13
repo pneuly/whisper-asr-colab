@@ -67,7 +67,7 @@ class Worker:
                         # File uploading seems incomplete
                         raise IOError("Upload seems incomplete. Run again after the upload is finished.")
             if self.start_time or self.end_time: # trim if specified
-                self._input_audio = trim_audio(self.audio, self.start_time, self.end_time)
+                self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
 
 
     def transcribe(self):
