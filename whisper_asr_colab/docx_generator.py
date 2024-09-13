@@ -17,7 +17,7 @@ class DocxGenerator():
             "ts2" : self.doc.styles['SecondParagraph'],
         }
 
-    def txt_to_word(self, txtfilename: str):
+    def txt_to_word(self, txtfilename: str) -> None:
         self.txtfilename = txtfilename
         # Open the text file in read mode with utf8 encoding
         with open(txtfilename, 'r', encoding='utf8') as f:
@@ -25,6 +25,7 @@ class DocxGenerator():
 
         # Process each line
         pline_count = 0
+        line_break : bool = True
         for line in lines:
             # Blank line
             if line.strip() == "":
@@ -40,10 +41,13 @@ class DocxGenerator():
             # Transcript
             if pline_count == 1:
                 self.doc.add_paragraph("○　", style=self.styles["ts1"])
-            else:
+            elif line_break:
                 self.doc.add_paragraph("", style=self.styles["ts2"])
-            self.doc.paragraphs[-1].add_run(line.strip())
+            text : str = line.strip()
+            self.doc.paragraphs[-1].add_run(text)
             pline_count += 1
+            # If the line is end with comma, do not break line
+            line_break = ("、" != text[-1])
 
         self.docfilename = f"{Path(txtfilename).stem}.docx"
         self.doc.save(self.docfilename)
