@@ -120,25 +120,30 @@ class Worker:
         )
 
     def run(self):
+        files_to_download = []
         print("Transcribing...")
         self.transcribe()
         print("Writing result...")
         outfiles = self.write_asr_result()
-        for filename in outfiles:
-            download_from_colab(filename)
+        files_to_download.extend(outfiles)
+
         print("Diarizing...")
         if self.diarization:
             self.diarize()
             print("Writing result...")
-            outfiles = self.write_diarize_result()
-            download_from_colab(outfiles[0])
+            diarized_txt = self.write_diarize_result()[0]
+            files_to_download.append(diarized_txt)
 
             empty_cache()
 
             print("Writing to docx...")
             doc = DocxGenerator()
-            doc.txt_to_word(outfiles[0])
+            doc.txt_to_word(diarized_txt)
             download_from_colab(doc.docfilename)
         # DL audio file
         if not self.audio == self.input_audio:
-            download_from_colab(self.input_audio)
+            files_to_download.append(self.input_audio)
+        
+        for file in files_to_download:
+            print(f"Downloading {file}")
+            download_from_colab(file)
