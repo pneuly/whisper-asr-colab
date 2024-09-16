@@ -2,57 +2,56 @@ import time
 import random
 from collections import defaultdict
 import numpy as np
-import pandas as pd
-from typing import List, NamedTuple, Optional
+from pandas import DataFrame
+from typing import List, Union, NamedTuple, Optional
+#from whisper_asr_colab.diarize import DiarizedSegment
+#from faster_whisper.transcribe import Segment
+from pyannote.core import Segment as SimpleSegment
 
-class DiarizedSegment(NamedTuple):
-    start: float
-    end: float
-    speaker: Optional[str] = None
-    intersection: Optional[float] = None
-
-    @property
-    def duration(self):
-        return(self.end - self.start)
+class Annotation(NamedTuple):
+    segment: Optional[SimpleSegment]
+    speaker: Optional[str]
 
 def original_assign_speakers(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: List[Annotation],
+        asr_segments: List[SimpleSegment],
+    ) -> List[Annotation]:
 
-    diarize_df = pd.DataFrame(dia_segments, columns=['segment', 'speaker'])
+    diarize_df = DataFrame(dia_segments, columns=['segment', 'speaker'])
     diarize_df['start'] = diarize_df['segment'].apply(lambda x: x.start)
     diarize_df['end'] = diarize_df['segment'].apply(lambda x: x.end)
 
-    def _get_speaker(start: float, end: float) -> Optional[str]:
+    def _get_speaker(start: float, end: float) -> tuple[Optional[str], Optional[str]]:
         diarize_df['intersection'] = np.minimum(diarize_df['end'], end) - np.maximum(diarize_df['start'], start)
         dia_tmp = diarize_df[diarize_df['intersection'] > 0]
         if dia_tmp.empty:
             return None, None
         result = dia_tmp.groupby("speaker")["intersection"].sum()
-        return result.idxmax(), result.max()
+        return result.idxmax(), result.max() #speaker, intersection
 
     diarized_segs = []
     for seg in asr_segments:
-        speaker, isec = _get_speaker(seg.start, seg.end)
-        diarized_segs.append(DiarizedSegment(seg.start, seg.end, speaker))
+        speaker, _ = _get_speaker(seg.start, seg.end)
+        diarized_segs.append(Annotation(seg, speaker))
     return diarized_segs
 
 def optimized_assign_speakers(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: List[Annotation],
+        asr_segments: List[SimpleSegment],
+    ) -> List[Annotation]:
 
     #diarize_start, diarize_end, diarize_speakers = np.array(
     #    [(item[0].start, item[0].end, item[1]) for item in dia_segments], dtype=object).T
     diarize_start = np.array([item[0].start for item in dia_segments])
     diarize_end = np.array([item[0].end for item in dia_segments])
     diarize_speakers = np.array([item[1] for item in dia_segments])
-
+    #@profile
     def _get_speaker(start: float, end: float) -> Optional[str]:
         intersection = np.minimum(diarize_end, end) - np.maximum(diarize_start, start)
         valid_intersection = intersection > 0
-        if valid_intersection.any():
+        speaker_intersections = intersection[valid_intersection]
+        if len(speaker_intersections) > 0:
+            speakers = diarize_speakers[valid_intersection]
             # Filter to only valid intersections
             speaker_intersections = intersection[valid_intersection]
             speakers = diarize_speakers[valid_intersection]
@@ -68,41 +67,35 @@ def optimized_assign_speakers(
         return speaker
 
     diarized_segs = [
-        DiarizedSegment(seg.start, seg.end, _get_speaker(seg.start, seg.end))
+        Annotation(seg, _get_speaker(seg.start, seg.end))
         for seg in asr_segments
     ]
     return diarized_segs
 
 def optimized_assign_speakers2(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: List[Annotation],
+        asr_segments: List[SimpleSegment],
+    ) -> List[Annotation]:
 
     # Precompute start, end, and speaker arrays from diarization DataFrame
     diarize_start = np.array([item[0].start for item in dia_segments])
     diarize_end = np.array([item[0].end for item in dia_segments])
     diarize_speakers = np.array([item[1] for item in dia_segments])
-
+    #@profile
     def _get_speaker(start: float, end: float) -> Optional[str]:
         intersection = np.minimum(diarize_end, end) - np.maximum(diarize_start, start)
         valid_intersection = intersection > 0
         if valid_intersection.any():
-            # Filter to only valid intersections
             speaker_intersections = intersection[valid_intersection]
             speakers = diarize_speakers[valid_intersection]
-
             # Sum the intersections by speaker
-            #speaker_overlap = defaultdict(lambda: 0.0)
-            #for i, speaker in enumerate(speakers):
-            #    speaker_overlap[speaker] += speaker_intersections[i]
+
+            # Elegant way. But slow
             unique_speakers, indices = np.unique(speakers, return_inverse=True)
             summed_intersections = np.zeros(unique_speakers.size)
             np.add.at(summed_intersections, indices, speaker_intersections)
-
-            # Select the speaker with the largest total overlap
             max_index = np.argmax(summed_intersections)
             speaker = unique_speakers[max_index]
-            #speaker = max(speaker_overlap, key=speaker_overlap.get)
         else:
             speaker = None
         return speaker
@@ -118,68 +111,82 @@ def optimized_assign_speakers2(
 
     # Create DiarizedSegment instances with assigned speakers
     diarized_segs = [
-        DiarizedSegment(start, end, speaker)
+        Annotation(SimpleSegment(start, end), speaker)
         for start, end, speaker in zip(asr_start, asr_end, asr_speakers)
     ]
 
     return diarized_segs
 
 def optimized_assign_speakers3(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: List[Annotation],
+        asr_segments: List[SimpleSegment],
+    ) -> List[Annotation]:
 
-    starts = [item[0].start for item in dia_segments]
-    ends = [item[0].end for item in dia_segments]
-    speakers = [item[1] for item in dia_segments]
+    #starts = [item[0].start for item in dia_segments]
+    #ends = [item[0].end for item in dia_segments]
+    #speakers = [item[1] for item in dia_segments]
     dia_segments_size = len(dia_segments) - 1
-
-    def _get_speaker(start: float, end: float) :
-        i = 0
-        durations = defaultdict(float)
-        while True:
+    i = 0
+    durations = defaultdict(float)
+    #@profile
+    def _get_speaker(asr_seg : SimpleSegment):
+        nonlocal i, durations
+        #print(i)
+        while i <= dia_segments_size:
+            #print(i)
             if i > dia_segments_size: #reached the end of dia_segments
-                yield max(durations, key=durations.get, default=None)
-                durations = defaultdict(float)
-                continue
-            if ends[i] < start: ## fast forward
+                speaker = max(durations, key=durations.get, default=None)
+                print(speaker)
+                return speaker
+            dia_seg = dia_segments[i][0]
+            if dia_seg.end < asr_seg.start: ## fast forward
+                print("ff")
                 i += 1
                 continue
             #print(f"i:{i} start:{start} end:{end} {dia_segments[i-1][0]}")
-            if starts[i] > end: # run out of the target segment
-                yield max(durations, key=durations.get, default=None)
+            if dia_seg.start > asr_seg.end: # run out of the target segment
+                speaker = max(durations, key=durations.get, default=None)
+                #print(f"{i} {speaker}")
+                #print(f"asr_seg:{asr_seg}")
+                #print(f"dia_seg:{dia_seg}")
                 durations = defaultdict(float)
-                continue
+                i -= 1
+                return speaker
             # intersection
-            durations[speakers[i]] += min(end, ends[i]) - max(start, starts[i])
+            #durations[speakers[i]] += min(end, ends[i]) - max(start, starts[i])
+            durations[dia_segments[i][1]] += (dia_seg & asr_seg).duration
             i += 1
 
+    diarized_segs = []
+    for seg in asr_segments:
+        diarized_segs.append(
+            Annotation(seg, _get_speaker(seg))
+        )
 
-    diarized_segs = [
-        DiarizedSegment(seg.start, seg.end, next(_get_speaker(seg.start, seg.end)))
-        for seg in asr_segments
-    ]
     return diarized_segs
 
 def optimized_assign_speakers4(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: List[Annotation],
+        asr_segments: List[SimpleSegment],
+    ) -> List[Annotation]:
 
-    diarize_start = np.array([item[0].start for item in dia_segments])
-    diarize_end = np.array([item[0].end for item in dia_segments])
+    np_dia = np.array([
+        [item[0].start for item in dia_segments], #start
+        [item[0].end for item in dia_segments], #end
+    ])
     diarize_speakers = np.array([item[1] for item in dia_segments])
-    max_idx = 0
 
-    def _get_speaker(start: float, end: float) -> Optional[str]:
-        nonlocal max_idx
-        intersection = np.minimum(diarize_end, end) - np.maximum(diarize_start, start)
+    diarized_segs = []
+    #@profile
+    def _get_speaker(start: float, end: float) -> tuple[Optional[str], int]:
+        max_idx = 0
+        intersection = np.minimum(np_dia[1], end) - np.maximum(np_dia[0], start)
+
         valid_intersection = intersection > 0
-        max_idx = np.where(valid_intersection)[0].max()
-        print(valid_intersection)
-        if valid_intersection.any():
-            # Filter to only valid intersections
-            speaker_intersections = intersection[valid_intersection]
+        #print(valid_intersection)
+
+        speaker_intersections = intersection[valid_intersection]
+        if len(speaker_intersections) > 0:
             speakers = diarize_speakers[valid_intersection]
 
             # Sum the intersections by speaker
@@ -188,79 +195,80 @@ def optimized_assign_speakers4(
                 speaker_overlap[speaker] += overlap
             # Select the speaker with the largest total overlap
             speaker = max(speaker_overlap, key=speaker_overlap.get)
+
+            max_idx = np.where(valid_intersection)[0].max()
+            #print(max_idx)
+
+            #print(len(diarize_start))
         else:
             speaker = None
-        return speaker
+        return speaker, max_idx
 
-    diarized_segs = [
-        DiarizedSegment(seg.start, seg.end, _get_speaker(seg.start, seg.end))
-        for seg in asr_segments
-    ]
+    for seg in asr_segments:
+        speaker, max_idx = _get_speaker(seg.start, seg.end)
+        diarized_segs.append(Annotation(seg, speaker))
+        #Shrink
+        np_dia = np_dia[:,max_idx:]
+        diarize_speakers = diarize_speakers[max_idx:]
+
     return diarized_segs
 
-### main
-# Create test data for benchmarking
-num_diarized_segments = 10
-asr_mutiplyer = 3
-num_asr_segments = num_diarized_segments * asr_mutiplyer
+if __name__ == "__main__":
+    # Create test data for benchmarking
+    asr_mutiplyer = 2
+    dia_segments_size = 500
+    asr_segments_size = dia_segments_size * asr_mutiplyer
+    dia_max_duration = 10
+    asr_max_duration = dia_max_duration / asr_mutiplyer
 
-# Random segments
-def segment_generator(size, min_duration=0.5, max_duration=10.0, has_speaker=False):
-    segments = []
-    start_time = 0
-    speaker = 1
-    for i in range(num_diarized_segments):
-        duration = random.uniform(0.5, 10.0)
-        args = [start_time, start_time + duration,]
-        segment = DiarizedSegment(
-                    *args,
-        )
-        start_time += duration
-        if has_speaker:
-            segments.append((segment, speaker))
-            speaker += 1
-        else:
+    # Random segments
+    def segments_generator(size:int, min_duration=0.5, max_duration=10.0)->List[SimpleSegment]:
+        segments = []
+        start_time = 0.0
+        for i in range(size):
+            duration = random.uniform(0.5, 10.0)
+            segment = SimpleSegment(
+                        start_time,
+                        start_time + duration,
+            )
+            start_time += duration
             segments.append(segment)
-    return segments
+        return segments
+
+    # Random annotations
+    def annotations_generator(segments:list, max_speakers:int=5)->List[Annotation]:
+        return[
+            Annotation(segment, f"SPEAKER{random.randint(0,max_speakers):02}")
+            for segment in segments]
+
+    asr_segments = segments_generator(asr_segments_size, max_duration=asr_max_duration)
+    dia_segments = annotations_generator(
+        segments_generator(dia_segments_size, max_duration=dia_max_duration))
 
 
-dia_segments = segment_generator(num_diarized_segments, 0.5, 10.0, True)
-asr_segments = segment_generator(num_diarized_segments, 0.5, 5.0, False)
+    # Benchmark functions
+    def bench(funcname: str):
+        start_time = time.time()
+        result = globals()[funcname](dia_segments, asr_segments)
+        duration = time.time() - start_time
+        return duration, result
 
-# Benchmark original function
-start_time = time.time()
-original_result = original_assign_speakers(dia_segments, asr_segments)
-original_duration = time.time() - start_time
+    fnames = [
+        #"original_assign_speakers",
+        "optimized_assign_speakers",
+        #"optimized_assign_speakers2",
+        "optimized_assign_speakers3",
+        #"optimized_assign_speakers4",
+        ]
 
+    resultlist = [(funcname, *bench(funcname),) for funcname in fnames]
+    for funcname, duration, result in resultlist:
+        print(f"{funcname}: {duration}")
+        print(resultlist[0][2] == result)
+        #print(result)
 
-# Benchmark optimized functions
-def bench(funcname: str):
-    start_time = time.time()
-    result = globals()[funcname](dia_segments, asr_segments)
-    duration = time.time() - start_time
-    return duration, result
+        for i, (a, b) in enumerate(zip(resultlist[0][2], result)):
+            if a != b:
+                print(f"Index {i}:\n{a}!=\n{b}\n")
 
-fnames = [
-    #"original_assign_speakers",
-    "optimized_assign_speakers",
-    "optimized_assign_speakers2",
-    "optimized_assign_speakers4",
-    ]
-
-resultlist = [(funcname, *bench(funcname),) for funcname in fnames]
-for funcname, duration, result in resultlist:
-    print(f"{funcname}: {duration}")
-    print(resultlist[0][2] == result)
-
-#print(f"original  : {original_duration}")
-#print(f"optimized : {optimized_duration}")
-#print(f"optimized2: {optimized_duration2}")
-#print(f"optimized3: {optimized_duration3}")
-#print(original_result == optimized_result)
-#print(original_result == optimized_result2)
-#print(original_result == optimized_result3)
-#print(original_result)
-#for i, (a, b) in enumerate(zip(original_result, optimized_result3)):
-#    if a != b:
-#        print(f"Index {i}:\n{a}!=\n{b}\n")
 

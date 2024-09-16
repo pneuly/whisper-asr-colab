@@ -1,4 +1,5 @@
 whisper_asr_colab/_version.py
+*.lprof
 try*
 # Byte-compiled / optimized / DLL files
 __pycache__/
