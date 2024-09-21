@@ -12,7 +12,7 @@ class Annotation(NamedTuple):
     segment: Optional[SimpleSegment]
     speaker: Optional[str]
 
-def original_assign_speakers(
+def original_assign_speakers( #use pandas DataFrame
         dia_segments: List[Annotation],
         asr_segments: List[SimpleSegment],
     ) -> List[Annotation]:
@@ -35,7 +35,7 @@ def original_assign_speakers(
         diarized_segs.append(Annotation(seg, speaker))
     return diarized_segs
 
-def optimized_assign_speakers(
+def optimized_assign_speakers( #not using pandas DataFrame
         dia_segments: List[Annotation],
         asr_segments: List[SimpleSegment],
     ) -> List[Annotation]:
@@ -64,7 +64,7 @@ def optimized_assign_speakers(
             speaker = max(speaker_overlap, key=speaker_overlap.get)
         else:
             speaker = None
-        return speaker
+        return str(speaker)
 
     diarized_segs = [
         Annotation(seg, _get_speaker(seg.start, seg.end))
@@ -72,7 +72,7 @@ def optimized_assign_speakers(
     ]
     return diarized_segs
 
-def optimized_assign_speakers2(
+def optimized_assign_speakers2( #similar to the opt1 but using np.unique
         dia_segments: List[Annotation],
         asr_segments: List[SimpleSegment],
     ) -> List[Annotation]:
@@ -117,55 +117,40 @@ def optimized_assign_speakers2(
 
     return diarized_segs
 
-def optimized_assign_speakers3(
+def optimized_assign_speakers3( #optimized for loop
         dia_segments: List[Annotation],
         asr_segments: List[SimpleSegment],
     ) -> List[Annotation]:
 
-    #starts = [item[0].start for item in dia_segments]
-    #ends = [item[0].end for item in dia_segments]
-    #speakers = [item[1] for item in dia_segments]
     dia_segments_size = len(dia_segments) - 1
     i = 0
     durations = defaultdict(float)
+    diarized_segs = []
     #@profile
-    def _get_speaker(asr_seg : SimpleSegment):
-        nonlocal i, durations
-        #print(i)
+    for asr_seg in asr_segments:
         while i <= dia_segments_size:
-            #print(i)
             if i > dia_segments_size: #reached the end of dia_segments
                 speaker = max(durations, key=durations.get, default=None)
-                print(speaker)
-                return speaker
+                diarized_segs.append(Annotation(asr_seg, speaker))
+                break
             dia_seg = dia_segments[i][0]
             if dia_seg.end < asr_seg.start: ## fast forward
                 print("ff")
                 i += 1
                 continue
-            #print(f"i:{i} start:{start} end:{end} {dia_segments[i-1][0]}")
             if dia_seg.start > asr_seg.end: # run out of the target segment
                 speaker = max(durations, key=durations.get, default=None)
-                #print(f"{i} {speaker}")
-                #print(f"asr_seg:{asr_seg}")
-                #print(f"dia_seg:{dia_seg}")
                 durations = defaultdict(float)
                 i -= 1
-                return speaker
-            # intersection
+                diarized_segs.append(Annotation(asr_seg, speaker))
+                break
+            # intersected duration
             #durations[speakers[i]] += min(end, ends[i]) - max(start, starts[i])
             durations[dia_segments[i][1]] += (dia_seg & asr_seg).duration
             i += 1
-
-    diarized_segs = []
-    for seg in asr_segments:
-        diarized_segs.append(
-            Annotation(seg, _get_speaker(seg))
-        )
-
     return diarized_segs
 
-def optimized_assign_speakers4(
+def optimized_assign_speakers4( #similar to opt2 but shrinks asr list
         dia_segments: List[Annotation],
         asr_segments: List[SimpleSegment],
     ) -> List[Annotation]:
@@ -181,24 +166,19 @@ def optimized_assign_speakers4(
     def _get_speaker(start: float, end: float) -> tuple[Optional[str], int]:
         max_idx = 0
         intersection = np.minimum(np_dia[1], end) - np.maximum(np_dia[0], start)
-
         valid_intersection = intersection > 0
         #print(valid_intersection)
-
         speaker_intersections = intersection[valid_intersection]
         if len(speaker_intersections) > 0:
             speakers = diarize_speakers[valid_intersection]
-
             # Sum the intersections by speaker
             speaker_overlap = defaultdict(float)
             for speaker, overlap in zip(speakers, speaker_intersections):
                 speaker_overlap[speaker] += overlap
             # Select the speaker with the largest total overlap
             speaker = max(speaker_overlap, key=speaker_overlap.get)
-
             max_idx = np.where(valid_intersection)[0].max()
             #print(max_idx)
-
             #print(len(diarize_start))
         else:
             speaker = None
@@ -270,5 +250,7 @@ if __name__ == "__main__":
         for i, (a, b) in enumerate(zip(resultlist[0][2], result)):
             if a != b:
                 print(f"Index {i}:\n{a}!=\n{b}\n")
+            #else:
+            #    print(f"Index {i}:\n{a}=\n{b}\n")
 
 
