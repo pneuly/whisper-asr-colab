@@ -64,7 +64,7 @@ def optimized_assign_speakers( #not using pandas DataFrame
             speaker = max(speaker_overlap, key=speaker_overlap.get)
         else:
             speaker = None
-        return str(speaker)
+        return speaker.item() if speaker is not None else None
 
     diarized_segs = [
         Annotation(seg, _get_speaker(seg.start, seg.end))
@@ -129,25 +129,21 @@ def optimized_assign_speakers3( #optimized for loop
     #@profile
     for asr_seg in asr_segments:
         while i <= dia_segments_size:
-            #if i > dia_segments_size: #reached the end of dia_segments
-            #    speaker = max(durations, key=durations.get, default=None)
-            #    diarized_segs.append(Annotation(asr_seg, speaker))
-            #    break
-            dia_seg = dia_segments[i][0]
+            dia_seg, speaker = dia_segments[i]
             if dia_seg.end < asr_seg.start: ## fast forward
-                print("ff")
                 i += 1
                 continue
-            if dia_seg.start > asr_seg.end: # run out of the target segment
-                speaker = max(durations, key=durations.get, default=None)
-                durations.clear()
+            if asr_seg.end < dia_seg.start: # run out of the target segment
                 i -= 1
-                diarized_segs.append(Annotation(asr_seg, speaker))
                 break
             # intersected duration
-            #durations[speakers[i]] += min(end, ends[i]) - max(start, starts[i])
-            durations[dia_segments[i][1]] += (dia_seg & asr_seg).duration
+            durations[speaker] += (dia_seg & asr_seg).duration
             i += 1
+        diarized_segs.append(Annotation(
+            asr_seg,
+            max(durations, key=durations.get, default=None)
+            ))
+        durations.clear()
     return diarized_segs
 
 def optimized_assign_speakers4( #similar to opt2 but shrinks asr list
