@@ -6,6 +6,9 @@ from typing import List, Union, NamedTuple, Optional
 #from whisper_asr_colab.diarize import DiarizedSegment
 #from faster_whisper.transcribe import Segment
 from pyannote.core import Segment as SimpleSegment
+from line_profiler import LineProfiler
+
+prf = LineProfiler()
 
 class Annotation(NamedTuple):
     segment: Optional[SimpleSegment]
@@ -61,19 +64,16 @@ def optimized_assign_speakers3( #optimized for loop
     for asr_seg in asr_segments:
         #print(f"loop {i}")
         while i <= dia_segments_size:
-            if asr_seg.end < dia_segments[i][0].start: # run out of the target segment
-            #    print(f"{i} running out")
-                break
             dia_seg, speaker = dia_segments[i]
-            #if dia_seg.end < asr_seg.start: ## fast forward
-            #    print(f"{i} ff")
-            #    i += 1
-            #    continue
+            if asr_seg.end < dia_seg.start: # run out of the target segment
+                #print(f"{i} break")
+                break
             # intersected duration
             duration = (dia_seg & asr_seg).duration
+            #print(f"{i} duration {duration}")
             if duration > 0.0:
-                durations[speaker] += (dia_seg & asr_seg).duration
-            #    print(f"{i} intersect {speaker} {durations[speaker]}")
+                durations[speaker] += duration
+                #print(f"{i} intersect {speaker} {duration}")
             #else:
             #    print(f"{i} skip {duration}")
             i += 1
@@ -85,6 +85,8 @@ def optimized_assign_speakers3( #optimized for loop
         durations.clear()
         i -= 1
     return diarized_segs
+
+prf.add_function(optimized_assign_speakers3)
 
 # Random segments
 def segments_generator(size:int, min_duration=0.5, max_duration=10.0)->List[SimpleSegment]:
@@ -107,45 +109,48 @@ def annotations_generator(segments:list, max_speakers:int=5)->List[Annotation]:
         for segment in segments]
 
 if __name__ == "__main__":
-    # Create test data for benchmarking
-    asr_mutiplyer = 2
-    dia_segments_size = 5000
-    asr_segments_size = dia_segments_size * asr_mutiplyer
-    dia_max_duration = 10
-    asr_max_duration = dia_max_duration / asr_mutiplyer
+    def main():
+        # Create test data for benchmarking
+        asr_mutiplyer = 2
+        dia_segments_size = 500
+        asr_segments_size = dia_segments_size * asr_mutiplyer
+        dia_max_duration = 10
+        asr_max_duration = dia_max_duration / asr_mutiplyer
 
-    asr_segments = segments_generator(asr_segments_size, max_duration=asr_max_duration)
-    dia_segments = annotations_generator(
-        segments_generator(dia_segments_size, max_duration=dia_max_duration))
+        asr_segments = segments_generator(asr_segments_size, max_duration=asr_max_duration)
+        dia_segments = annotations_generator(
+            segments_generator(dia_segments_size, max_duration=dia_max_duration))
 
 
-    # Benchmark functions
-    def bench(funcname: str):
-        start_time = time.time()
-        result = globals()[funcname](dia_segments, asr_segments)
-        duration = time.time() - start_time
-        return duration, result
+        # Benchmark functions
+        def bench(funcname: str):
+            start_time = time.time()
+            result = globals()[funcname](dia_segments, asr_segments)
+            duration = time.time() - start_time
+            return duration, result
 
-    fnames = [
-        "optimized_assign_speakers",
-        "optimized_assign_speakers3",
-        ]
+        fnames = [
+            "optimized_assign_speakers",
+            "optimized_assign_speakers3",
+            ]
 
-    resultlist = [(funcname, *bench(funcname),) for funcname in fnames]
-    for funcname, duration, result in resultlist:
-        print(f"{funcname}: {duration}")
-        if funcname == "optimized_assign_speakers3":
-            print(resultlist[0][2] == result)
-        #print(result)
-        if funcname == "optimized_assign_speakers3":
-            for i, (a, b) in enumerate(zip(resultlist[0][2], result)):
-                if a != b:
-                    print(f"Index {i}:\n{a[0]} {a[1]}!=\n{b[0]} {b[1]}\n")
-                #else:
-                #    print(f"Index {i}:\n{a}=\n{b}\n")
-    #for i, seg in enumerate(asr_segments):
-    #    print(f"{i} {seg}")
-    #print("")
-    #or i, (seg, speaker) in enumerate(dia_segments):
-    #    print(f"{i} {seg} {speaker}")
+        resultlist = [(funcname, *bench(funcname),) for funcname in fnames]
+        for funcname, duration, result in resultlist:
+            print(f"{funcname}: {duration}")
+            if funcname == "optimized_assign_speakers3":
+                print(resultlist[0][2] == result)
+            #print(result)
+            if funcname == "optimized_assign_speakers3":
+                for i, (a, b) in enumerate(zip(resultlist[0][2], result)):
+                    if a != b:
+                        print(f"Index {i}:\n{a[0]} {a[1]}!=\n{b[0]} {b[1]}\n")
+                    #else:
+                    #    print(f"Index {i}:\n{a}=\n{b}\n")
+        #for i, seg in enumerate(asr_segments):
+        #    print(f"{i} {seg}")
+        #print("")
+        #or i, (seg, speaker) in enumerate(dia_segments):
+        #    print(f"{i} {seg} {speaker}")
 
+    prf.runcall(main)
+    prf.print_stats()

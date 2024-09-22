@@ -48,12 +48,10 @@ def optimized_assign_speakers( #not using pandas DataFrame
     #@profile
     def _get_speaker(start: float, end: float) -> Optional[str]:
         intersection = np.minimum(diarize_end, end) - np.maximum(diarize_start, start)
+        # Filter to only valid intersections
         valid_intersection = intersection > 0
         speaker_intersections = intersection[valid_intersection]
         if len(speaker_intersections) > 0:
-            speakers = diarize_speakers[valid_intersection]
-            # Filter to only valid intersections
-            speaker_intersections = intersection[valid_intersection]
             speakers = diarize_speakers[valid_intersection]
 
             # Sum the intersections by speaker
@@ -61,10 +59,10 @@ def optimized_assign_speakers( #not using pandas DataFrame
             for speaker, overlap in zip(speakers, speaker_intersections):
                 speaker_overlap[speaker] += overlap
             # Select the speaker with the largest total overlap
-            speaker = max(speaker_overlap, key=speaker_overlap.get)
+            speaker = max(speaker_overlap, key=speaker_overlap.get).item()
         else:
             speaker = None
-        return speaker.item() if speaker is not None else None
+        return speaker
 
     diarized_segs = [
         Annotation(seg, _get_speaker(seg.start, seg.end))
@@ -84,18 +82,17 @@ def optimized_assign_speakers2( #similar to the opt1 but using np.unique
     #@profile
     def _get_speaker(start: float, end: float) -> Optional[str]:
         intersection = np.minimum(diarize_end, end) - np.maximum(diarize_start, start)
+        # Filter to only valid intersections
         valid_intersection = intersection > 0
-        if valid_intersection.any():
-            speaker_intersections = intersection[valid_intersection]
+        speaker_intersections = intersection[valid_intersection]
+        if len(speaker_intersections) > 0:
             speakers = diarize_speakers[valid_intersection]
             # Sum the intersections by speaker
-
             # Elegant way. But slow
             unique_speakers, indices = np.unique(speakers, return_inverse=True)
-            summed_intersections = np.zeros(unique_speakers.size)
-            np.add.at(summed_intersections, indices, speaker_intersections)
+            summed_intersections = np.bincount(indices, weights=speaker_intersections)
             max_index = np.argmax(summed_intersections)
-            speaker = unique_speakers[max_index]
+            speaker = unique_speakers[max_index].item()
         else:
             speaker = None
         return speaker
@@ -129,9 +126,9 @@ def optimized_assign_speakers3( #optimized for loop
     #@profile
     for asr_seg in asr_segments:
         while i <= dia_segments_size:
-            if asr_seg.end < dia_segments[i][0].start: # run out of the target segment
-                break
             dia_seg, speaker = dia_segments[i]
+            if asr_seg.end < dia_seg.start:  # run out of the target segment
+                break
             duration = (dia_seg & asr_seg).duration
             if duration > 0.0:
                 durations[speaker] += (dia_seg & asr_seg).duration
@@ -191,7 +188,7 @@ def optimized_assign_speakers4( #similar to opt2 but shrinks asr list
 if __name__ == "__main__":
     # Create test data for benchmarking
     asr_mutiplyer = 2
-    dia_segments_size = 5000
+    dia_segments_size = 500
     asr_segments_size = dia_segments_size * asr_mutiplyer
     dia_max_duration = 10
     asr_max_duration = dia_max_duration / asr_mutiplyer
@@ -231,7 +228,7 @@ if __name__ == "__main__":
     fnames = [
         "original_assign_speakers",
         "optimized_assign_speakers",
-        #"optimized_assign_speakers2",
+        "optimized_assign_speakers2",
         "optimized_assign_speakers3",
         #"optimized_assign_speakers4",
         ]
