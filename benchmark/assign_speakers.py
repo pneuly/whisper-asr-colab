@@ -129,10 +129,10 @@ def optimized_assign_speakers3( #optimized for loop
     #@profile
     for asr_seg in asr_segments:
         while i <= dia_segments_size:
-            if i > dia_segments_size: #reached the end of dia_segments
-                speaker = max(durations, key=durations.get, default=None)
-                diarized_segs.append(Annotation(asr_seg, speaker))
-                break
+            #if i > dia_segments_size: #reached the end of dia_segments
+            #    speaker = max(durations, key=durations.get, default=None)
+            #    diarized_segs.append(Annotation(asr_seg, speaker))
+            #    break
             dia_seg = dia_segments[i][0]
             if dia_seg.end < asr_seg.start: ## fast forward
                 print("ff")
@@ -140,7 +140,7 @@ def optimized_assign_speakers3( #optimized for loop
                 continue
             if dia_seg.start > asr_seg.end: # run out of the target segment
                 speaker = max(durations, key=durations.get, default=None)
-                durations = defaultdict(float)
+                durations.clear()
                 i -= 1
                 diarized_segs.append(Annotation(asr_seg, speaker))
                 break
