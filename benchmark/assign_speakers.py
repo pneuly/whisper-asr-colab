@@ -21,7 +21,7 @@ def original_assign_speakers( #use pandas DataFrame
     diarize_df['start'] = diarize_df['segment'].apply(lambda x: x.start)
     diarize_df['end'] = diarize_df['segment'].apply(lambda x: x.end)
 
-    def _get_speaker(start: float, end: float) -> tuple[Optional[str], Optional[str]]:
+    def _get_speaker(start: float, end: float):# -> tuple[Optional[str], Optional[str]]:
         diarize_df['intersection'] = np.minimum(diarize_df['end'], end) - np.maximum(diarize_df['start'], start)
         dia_tmp = diarize_df[diarize_df['intersection'] > 0]
         if dia_tmp.empty:
@@ -129,22 +129,21 @@ def optimized_assign_speakers3( #optimized for loop
     #@profile
     for asr_seg in asr_segments:
         while i <= dia_segments_size:
-            dia_seg, speaker = dia_segments[i]
-            if dia_seg.end < asr_seg.start: ## fast forward
-                i += 1
-                continue
-            if asr_seg.end < dia_seg.start: # run out of the target segment
-                i -= 1
+            if asr_seg.end < dia_segments[i][0].start: # run out of the target segment
                 break
-            # intersected duration
-            durations[speaker] += (dia_seg & asr_seg).duration
+            dia_seg, speaker = dia_segments[i]
+            duration = (dia_seg & asr_seg).duration
+            if duration > 0.0:
+                durations[speaker] += (dia_seg & asr_seg).duration
             i += 1
         diarized_segs.append(Annotation(
             asr_seg,
             max(durations, key=durations.get, default=None)
             ))
         durations.clear()
+        i -= 1
     return diarized_segs
+
 
 def optimized_assign_speakers4( #similar to opt2 but shrinks asr list
         dia_segments: List[Annotation],
@@ -192,7 +191,7 @@ def optimized_assign_speakers4( #similar to opt2 but shrinks asr list
 if __name__ == "__main__":
     # Create test data for benchmarking
     asr_mutiplyer = 2
-    dia_segments_size = 500
+    dia_segments_size = 5000
     asr_segments_size = dia_segments_size * asr_mutiplyer
     dia_max_duration = 10
     asr_max_duration = dia_max_duration / asr_mutiplyer
@@ -230,7 +229,7 @@ if __name__ == "__main__":
         return duration, result
 
     fnames = [
-        #"original_assign_speakers",
+        "original_assign_speakers",
         "optimized_assign_speakers",
         #"optimized_assign_speakers2",
         "optimized_assign_speakers3",
