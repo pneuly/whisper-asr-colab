@@ -60,9 +60,9 @@ def _combine_same_speakers(
     ]
     _combined = [
         Annotation(
-            segment = TimeSegment(segs[0].start, segs[-1].end),
-            speaker = segs[0].speaker,
-         ) for segs in _grouped
+            segment = TimeSegment(annos[0].segment.start, annos[-1].segment.end),
+            speaker = annos[0].speaker,
+         ) for annos in _grouped
     ]
     return _combined
 
