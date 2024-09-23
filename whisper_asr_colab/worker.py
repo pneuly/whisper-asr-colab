@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import time
+from datetime import datetime
 import logging
 from torch.cuda import empty_cache
 from numpy import ndarray
@@ -105,8 +106,12 @@ class Worker:
 
     def write_asr_result(self) -> tuple[str, ...]:
         # write results to text files
+        if isinstance(self.input_audio, str):
+            outfilename = self.input_audio 
+        else:
+            outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
         return _write_asr_result(
-            os.path.basename(self.input_audio),
+            outfilename,
             self.asr_segments,
             self.timestamp_offset
         )
