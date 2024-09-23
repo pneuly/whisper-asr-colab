@@ -93,7 +93,6 @@ def assign_speakers(
     i = 0
     durations = defaultdict(float)
     diarized_segs = []
-    #@profile
     for asr_seg in asr_segments:
         while i <= dia_segments_size:
             dia_seg, speaker = annotations[i]
