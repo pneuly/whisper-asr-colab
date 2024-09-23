@@ -58,12 +58,27 @@ def _combine_same_speakers(
     _grouped = [
         list(g) for k, g in groupby(annotations, lambda x: x.speaker)
     ]
-    _combined = [
-        Annotation(
-            segment = TimeSegment(annos[0].segment.start, annos[-1].segment.end),
-            speaker = annos[0].speaker,
-         ) for annos in _grouped
-    ]
+    _combined = []
+    for annos in _grouped:
+        seg, speaker = annos[0]
+        _combined.append(
+            Annotation(
+                Segment(
+                    id = seg.id,
+                    seek = seg.seek,
+                    start = seg.start,
+                    end = annos[-1].segment.end,
+                    text = "\n".join(seg.text for seg, _ in annos).strip(),
+                    tokens = [token for seg, _ in annos for token in seg.tokens],
+                    temperature = seg.temperature,
+                    avg_logprob = seg.avg_logprob,
+                    compression_ratio = seg.compression_ratio,
+                    no_speech_prob = seg.no_speech_prob,
+                    words = None,
+                ),
+                speaker
+            )
+        )
     return _combined
 
 

@@ -39,7 +39,7 @@ def time_segment_text(
 
 
 def add_timestamp(
-        segment: Union[Segment],
+        segment: Segment,
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> str:
     return (f"{time_segment_text(segment, timestamp_offset)} {segment.text.strip()}")
@@ -47,7 +47,7 @@ def add_timestamp(
 
 def write_asr_result(
         basename: str,
-        segments: List[Union[Segment]],
+        segments: List[Segment],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> tuple[str, ...]:
     outfilenames = (f"{basename}.txt", f"{basename}_timestamped.txt")
