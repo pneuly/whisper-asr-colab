@@ -2,7 +2,8 @@ from json import dump as jsondump, load as jsonload
 import datetime
 from typing import List, Optional, Union
 from faster_whisper.transcribe import Segment
-from .diarize import DiarizedSegment
+from pyannote.core import Segment as TimeSegment
+from .diarize import Annotation
 def str2seconds(time_str: str) -> float:
     for fmt in ("%H:%M:%S", "%M:%S", "%S", "%H:%M:%S.%f", "%M:%S.%f", "%S.%f"):
         try:
@@ -26,7 +27,7 @@ def format_timestamp(seconds: float) -> str:
 
 
 def time_segment_text(
-        segment: Union[Segment, DiarizedSegment],
+        segment: Union[Segment, TimeSegment],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> str:
     if timestamp_offset is None:
@@ -38,7 +39,7 @@ def time_segment_text(
 
 
 def add_timestamp(
-        segment: Union[Segment, DiarizedSegment],
+        segment: Union[Segment],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> str:
     return (f"{time_segment_text(segment, timestamp_offset)} {segment.text.strip()}")
@@ -46,7 +47,7 @@ def add_timestamp(
 
 def write_asr_result(
         basename: str,
-        segments: List[Union[Segment, DiarizedSegment]],
+        segments: List[Union[Segment]],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> tuple[str, ...]:
     outfilenames = (f"{basename}.txt", f"{basename}_timestamped.txt")
@@ -71,15 +72,15 @@ def load_segments(jsonfile: str) -> List[Segment]:
 
 def write_diarize_result(
         basename: str,
-        segments: List[Union[Segment, DiarizedSegment]],
+        annotations: List[Annotation],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> tuple[str, ...]:
     outfilename = f"{basename}_diarized.txt"
     fh = open(outfilename, "w", encoding="utf-8")
-    for segment in segments:
+    for segment, speaker in annotations:
         fh.write(time_segment_text(segment, timestamp_offset) + " ")
-        if segment.speaker:
-            fh.write(segment.speaker + "\n")
+        if speaker:
+            fh.write(speaker + "\n")
         else:
             fh.write("\n")
         fh.write(segment.text.replace(" ", "") + "\n\n")
