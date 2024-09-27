@@ -74,14 +74,14 @@ class Worker:
     def transcribe(self):
         # Transcribe
         if self.realtime: # realtime trascription
-            realtime_transcribe(
+            self.asr_segments = realtime_transcribe(
                 url = self.audio,
                 model_size = self.model_size,
                 language = self.language,
                 initial_prompt = self.initial_prompt
             )
             empty_cache()
-            sys.exit(0)
+            #sys.exit(0)
         else:  # use faster-whisper
             self.asr_segments, _ = faster_whisper_transcribe(
                 audio=self.input_audio,
