@@ -78,7 +78,6 @@ class Worker:
                 url = self.audio,
                 model_size = self.model_size,
                 language = self.language,
-                multilingual=self.multilingual,
                 initial_prompt = self.initial_prompt
             )
             empty_cache()
@@ -107,7 +106,7 @@ class Worker:
     def write_asr_result(self) -> tuple[str, ...]:
         # write results to text files
         if isinstance(self.input_audio, str):
-            outfilename = self.input_audio 
+            outfilename = self.input_audio
         else:
             outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
         return _write_asr_result(
@@ -148,7 +147,7 @@ class Worker:
         # DL audio file
         if not self.audio == self.input_audio:
             files_to_download.append(self.input_audio)
-        
+
         for file in files_to_download:
             print(f"Downloading {file}")
             download_from_colab(file)
