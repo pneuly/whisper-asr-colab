@@ -97,6 +97,7 @@ def realtime_transcribe(
     stop_transcribing = False
 
     def _stop_button_clicked(b):
+        print(f"Stop button is clicked. {b}")
         nonlocal stop_transcribing
         stop_transcribing = True
 
