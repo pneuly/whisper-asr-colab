@@ -7,4 +7,4 @@ def test_diarize(audio, asr_segments_file):
     asr_segments = load_segments(asr_segments_file)
     diarized_segments = diarize(audio, asr_segments, hf_token)
     assert len(diarized_segments) > 1
-    assert diarized_segments[0].text != ""
+    assert diarized_segments[0].segment.text != ""
