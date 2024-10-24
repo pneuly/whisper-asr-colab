@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import time
+from datetime import datetime
 import logging
 from torch.cuda import empty_cache
 from numpy import ndarray
@@ -73,15 +74,14 @@ class Worker:
     def transcribe(self):
         # Transcribe
         if self.realtime: # realtime trascription
-            realtime_transcribe(
+            self.asr_segments = realtime_transcribe(
                 url = self.audio,
                 model_size = self.model_size,
                 language = self.language,
-                multilingual=self.multilingual,
                 initial_prompt = self.initial_prompt
             )
             empty_cache()
-            sys.exit(0)
+            #sys.exit(0)
         else:  # use faster-whisper
             self.asr_segments, _ = faster_whisper_transcribe(
                 audio=self.input_audio,
@@ -105,8 +105,12 @@ class Worker:
 
     def write_asr_result(self) -> tuple[str, ...]:
         # write results to text files
+        if isinstance(self.input_audio, str):
+            outfilename = self.input_audio
+        else:
+            outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
         return _write_asr_result(
-            os.path.basename(self.input_audio),
+            outfilename,
             self.asr_segments,
             self.timestamp_offset
         )
@@ -120,25 +124,30 @@ class Worker:
         )
 
     def run(self):
+        files_to_download = []
         print("Transcribing...")
         self.transcribe()
         print("Writing result...")
         outfiles = self.write_asr_result()
-        for filename in outfiles:
-            download_from_colab(filename)
+        files_to_download.extend(outfiles)
+
         print("Diarizing...")
         if self.diarization:
             self.diarize()
             print("Writing result...")
-            outfiles = self.write_diarize_result()
-            download_from_colab(outfiles[0])
+            diarized_txt = self.write_diarize_result()[0]
+            files_to_download.append(diarized_txt)
 
             empty_cache()
 
             print("Writing to docx...")
             doc = DocxGenerator()
-            doc.txt_to_word(outfiles[0])
+            doc.txt_to_word(diarized_txt)
             download_from_colab(doc.docfilename)
         # DL audio file
         if not self.audio == self.input_audio:
-            download_from_colab(self.input_audio)
+            files_to_download.append(self.input_audio)
+
+        for file in files_to_download:
+            print(f"Downloading {file}")
+            download_from_colab(file)

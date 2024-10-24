@@ -4,6 +4,9 @@ from logging import getLogger
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 from typing import Union, Optional, Iterable, TextIO
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
+from faster_whisper.transcribe import Segment
+from IPython.display import display
+import ipywidgets as widgets
 from .audio import load_audio, open_stream
 
 logger = getLogger(__name__)
@@ -77,7 +80,8 @@ def realtime_transcribe(
         model_size: str = "medium",
         language: Optional[str] = None,
         initial_prompt: Optional[str] = None,
-    ):
+    ) -> list[Segment]:
+    segments = []
     model = FasterWhisperModel(model_size)
     process = open_stream(url)
     buffer = b""
@@ -86,13 +90,26 @@ def realtime_transcribe(
         "w",
         encoding="utf-8"
     )
+    stop_button = widgets.Button(
+        description="Stop Transcribing",
+        style={'font_weight': 'bold'},
+    )
+    stop_transcribing = False
+
+    def _stop_button_clicked(b):
+        print(f"Stop button is clicked. {b}")
+        nonlocal stop_transcribing
+        stop_transcribing = True
+
+    display(stop_button)
+    stop_button.on_click(_stop_button_clicked)
 
     def _realtime_asr_loop(
         model: str,
         data: bytes,
         outfh: TextIO,
         initial_prompt: Optional[str] = None
-        ):
+        ) -> list[Segment]:
         segments, _ =  model.transcribe(
             audio=np_frombuffer(data, np_int16).astype(np_float32) / 32768.0,
             language=language,
@@ -102,19 +119,19 @@ def realtime_transcribe(
             print(segment.text)
             outfh.write(segment.text + "\n")
             outfh.flush()
-            previous_text = segment.text
-        return previous_text
+        return segments
 
-    while True:
+    while not stop_transcribing:
         audio_data = process.stdout.read(16000 * 2)
         if process.poll() is not None:
-            _realtime_asr_loop(model, buffer, fh1)
+            segments.append(_realtime_asr_loop(model, buffer, fh1))
             break
 
         buffer += audio_data
         if len(buffer) >= 16000 * 2 * 30:  # 30 seconds
-            _realtime_asr_loop(model, buffer, fh1)
+            segments.append(_realtime_asr_loop(model, buffer, fh1))
             buffer = buffer[- 16000:]  # 0.5 seconds overlap
         else:
             time.sleep(0.1)
     fh1.close()
+    return segments

@@ -1,35 +1,19 @@
 import logging
+from collections import defaultdict
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy as torch_from_numpy
-from numpy import ndarray, minimum as np_minimum, maximum as np_maximum
-from pandas import DataFrame
+from numpy import ndarray
 from typing import List, Union, Optional, NamedTuple
 from itertools import groupby
-from faster_whisper.transcribe import Segment, Word
+from faster_whisper.transcribe import Segment
 from pyannote.audio import Pipeline
+from pyannote.core import Segment as TimeSegment
 from .audio import load_audio
 
+class Annotation(NamedTuple):
+    segment: Union[Segment, TimeSegment]
+    speaker: Optional[str]
 
-class DiarizedSegment(NamedTuple):
-    id: int
-    seek: int
-    start: float
-    end: float
-    text: str
-    tokens: List[int]
-    avg_logprob: Optional[float] = None
-    compression_ratio: Optional[float] = None
-    no_speech_prob: Optional[float] = None
-    words: Optional[List['Word']] = None
-    temperature: Optional[float] = 1.0
-    speaker: Optional[str] = None
-
-class DiarizedWord(NamedTuple):
-    start: float
-    end: float
-    word: str
-    probability: float
-    speaker: Optional[str] = None
 
 class DiarizationPipeline:
     def __init__(
@@ -45,74 +29,85 @@ class DiarizationPipeline:
             device = torch_device(device)
         self.model = Pipeline.from_pretrained(model_name, use_auth_token=use_auth_token).to(device)
 
-    def __call__(self, audio: Union[str, ndarray], num_speakers=None, min_speakers=None, max_speakers=None):
+    def __call__(
+            self, audio: Union[str, ndarray], num_speakers=None, min_speakers=None, max_speakers=None
+            ) -> List[Annotation]:
         if isinstance(audio, str):
             audio = load_audio(audio)
         audio_data = {
             'waveform': torch_from_numpy(audio[None, :]),
             'sample_rate': 16000
         }
-        segments = self.model(audio_data, num_speakers = num_speakers, min_speakers=min_speakers, max_speakers=max_speakers)
-        diarize_df = DataFrame(segments.itertracks(yield_label=True), columns=['segment', 'label', 'speaker'])
-        diarize_df['start'] = diarize_df['segment'].apply(lambda x: x.start)
-        diarize_df['end'] = diarize_df['segment'].apply(lambda x: x.end)
-        return diarize_df
+        annotation_generator = self.model(audio_data, num_speakers = num_speakers, min_speakers=min_speakers, max_speakers=max_speakers)
+        annotations = [
+            Annotation(segment, speaker)
+            for segment, _, speaker in annotation_generator.itertracks(yield_label=True)
+        ]
+        return annotations
 
 
-def _fill_missing_speakers(segments: List[DiarizedSegment]) -> None:
-    for i in range(1, len(segments)):
-        if segments[i].speaker is None:
-            segments[i] = segments[i]._replace(speaker=segments[i-1].speaker)
+def _fill_missing_speakers(annotations: List[Annotation]) -> None:
+    for i in range(1, len(annotations)):
+        if annotations[i].speaker is None:
+            annotations[i] = annotations[i]._replace(speaker=annotations[i-1].speaker)
 
 
 def _combine_same_speakers(
-        segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        annotations: List[Annotation],
+    ) -> List[Annotation]:
     _grouped = [
-        list(g) for k, g in groupby(segments, lambda x: x.speaker)
+        list(g) for k, g in groupby(annotations, lambda x: x.speaker)
     ]
-    _combined = [
-        DiarizedSegment(
-            id = segs[0].id,
-            seek = segs[0].seek,
-            start = segs[0].start,
-            end = segs[-1].end,
-            text = "\n".join(seg.text for seg in segs).strip(),
-            tokens = [token for seg in segs for token in seg.tokens],
-            speaker = segs[0].speaker,
-         ) for segs in _grouped
-    ]
+    _combined = []
+    for annos in _grouped:
+        seg, speaker = annos[0]
+        _combined.append(
+            Annotation(
+                Segment(
+                    id = seg.id,
+                    seek = seg.seek,
+                    start = seg.start,
+                    end = annos[-1].segment.end,
+                    text = "\n".join(seg.text for seg, _ in annos).strip(),
+                    tokens = [token for seg, _ in annos for token in seg.tokens],
+                    temperature = seg.temperature,
+                    avg_logprob = seg.avg_logprob,
+                    compression_ratio = seg.compression_ratio,
+                    no_speech_prob = seg.no_speech_prob,
+                    words = None,
+                ),
+                speaker
+            )
+        )
     return _combined
 
 
 def assign_speakers(
-        diarize_df: DataFrame,
-        asr_segments: List[Segment],
-        fill_missing_speakers: bool = True,
+        annotations: List[Annotation],
+        asr_segments: List[TimeSegment],
+        fill_missing_speakers: bool = False,
         combine_same_speakers: bool = True,
-    ) -> List[DiarizedSegment]:
+    ) -> List[Annotation]:
 
-    def _get_speaker(start: float, end: float) -> Optional[str]:
-        diarize_df['intersection'] = np_minimum(diarize_df['end'], end) - np_maximum(diarize_df['start'], start)
-        dia_tmp = diarize_df[diarize_df['intersection'] > 0]
-        if dia_tmp.empty:
-            return None
-        return dia_tmp.groupby("speaker")["intersection"].sum().idxmax()
-
+    dia_segments_size = len(annotations) - 1
+    i = 0
+    durations = defaultdict(float)
     diarized_segs = []
-    for seg in asr_segments:
-        seg = DiarizedSegment(
-            *seg,
-            speaker=_get_speaker(seg.start, seg.end)
-        )
-        # assign speaker to words
-        if seg.words is not None:
-            for word in seg.words:
-                word = DiarizedWord(
-                    *word,
-                    speaker=_get_speaker(word.start, word.end)
-                )
-        diarized_segs.append(seg)
+    for asr_seg in asr_segments:
+        while i <= dia_segments_size:
+            dia_seg, speaker = annotations[i]
+            if asr_seg.end < dia_seg.start:  # run out of the target segment
+                break
+            duration = (dia_seg & asr_seg).duration
+            if duration > 0.0:
+                durations[speaker] += (dia_seg & asr_seg).duration
+            i += 1
+        diarized_segs.append(Annotation(
+            asr_seg,
+            max(durations, key=durations.get, default=None)
+            ))
+        durations.clear()
+        i -= 1
     if fill_missing_speakers: #If speaker is None, fill with the previous speaker
         _fill_missing_speakers(diarized_segs)
     if combine_same_speakers:
@@ -124,7 +119,7 @@ def diarize(
         audio: Union[str, ndarray],
         asr_segments: List[Segment],
         hugging_face_token: str,
-    ) -> List[DiarizedSegment]:
+    ) -> List[TimeSegment]:
 
     diarize_model = DiarizationPipeline(use_auth_token=hugging_face_token)
     diarized_result = diarize_model(audio)

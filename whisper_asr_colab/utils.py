@@ -1,9 +1,11 @@
 from json import dump as jsondump, load as jsonload
-import datetime
+from datetime import datetime
 from typing import List, Optional, Union
 from faster_whisper.transcribe import Segment
-from .diarize import DiarizedSegment
+from pyannote.core import Segment as TimeSegment
+from .diarize import Annotation
 def str2seconds(time_str: str) -> float:
+    """Convert a time string to seconds."""
     for fmt in ("%H:%M:%S", "%M:%S", "%S", "%H:%M:%S.%f", "%M:%S.%f", "%S.%f"):
         try:
             return (
@@ -11,13 +13,11 @@ def str2seconds(time_str: str) -> float:
                 ).total_seconds()
         except ValueError:
             pass
-    print(f"Error: Unable to parse time string '{time_str}'")
-    return ""
+    raise ValueError(f"Error: Unable to parse time string '{time_str}'")
 
 
 def format_timestamp(seconds: float) -> str:
-    # td = timedelta(seconds=seconds)
-    # return f"{str(td)[:10]}"
+    """Format seconds into a string 'H:MM:SS.ss'."""
     hours = seconds // 3600
     remain = seconds - (hours * 3600)
     minutes = remain // 60
@@ -26,9 +26,10 @@ def format_timestamp(seconds: float) -> str:
 
 
 def time_segment_text(
-        segment: Union[Segment, DiarizedSegment],
+        segment: Union[Segment, TimeSegment],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> str:
+    """Create a segment string '[H:MM:SS.ss - H:MM:SS.ss]' from a segment."""
     if timestamp_offset is None:
         timestamp_offset = 0.0
     _offset_seconds = str2seconds(timestamp_offset) if isinstance(timestamp_offset, str) else timestamp_offset
@@ -38,32 +39,38 @@ def time_segment_text(
 
 
 def add_timestamp(
-        segment: Union[Segment, DiarizedSegment],
+        segment: Segment,
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> str:
+    """Create a string '[H:MM:SS.ss - H:MM:SS.ss] {segment.text}' from a segment."""
     return (f"{time_segment_text(segment, timestamp_offset)} {segment.text.strip()}")
 
 
 def write_asr_result(
         basename: str,
-        segments: List[Union[Segment, DiarizedSegment]],
+        segments: List[Segment],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> tuple[str, ...]:
+    """Write ASR segments to files with and without timestamps."""
     outfilenames = (f"{basename}.txt", f"{basename}_timestamped.txt")
-    filehandles = [open(filename, "w", encoding="utf-8") for filename in outfilenames]
+    fh_text, fh_timestamped = [
+        open(filename, "w", encoding="utf-8") for filename in outfilenames
+    ]
     for segment in segments:
-        filehandles[0].write(segment.text + "\n")
-        filehandles[1].write(add_timestamp(segment, timestamp_offset) + "\n")
-    filehandles[0].close()
-    filehandles[1].close()
+        fh_text.write(segment.text + "\n")
+        fh_timestamped.write(add_timestamp(segment, timestamp_offset) + "\n")
+    fh_text.close()
+    fh_timestamped.close()
     return outfilenames
 
 def save_segments(jsonfile: str, segments: List[Segment]):
+    """Save segments to a JSON file."""
     with open(jsonfile, 'w') as fh:
         jsondump([segment._asdict() for segment in segments], fh)
 
 
 def load_segments(jsonfile: str) -> List[Segment]:
+    """Load segments from a JSON file."""
     with open(jsonfile, 'r') as fh:
         data_list = jsonload(fh)
     return [Segment(**data) for data in data_list]
@@ -71,15 +78,16 @@ def load_segments(jsonfile: str) -> List[Segment]:
 
 def write_diarize_result(
         basename: str,
-        segments: List[Union[Segment, DiarizedSegment]],
+        annotations: List[Annotation],
         timestamp_offset: Optional[Union[int, float, str]] = 0.0
         ) -> tuple[str, ...]:
+    """Write diarized transcpript to a text file."""
     outfilename = f"{basename}_diarized.txt"
     fh = open(outfilename, "w", encoding="utf-8")
-    for segment in segments:
+    for segment, speaker in annotations:
         fh.write(time_segment_text(segment, timestamp_offset) + " ")
-        if segment.speaker:
-            fh.write(segment.speaker + "\n")
+        if speaker:
+            fh.write(speaker + "\n")
         else:
             fh.write("\n")
         fh.write(segment.text.replace(" ", "") + "\n\n")
@@ -87,6 +95,7 @@ def write_diarize_result(
     return (outfilename,)
 
 def download_from_colab(filepath: str):
+    """Download a file in Google Colab environment."""
     if str(get_ipython()).startswith("<google.colab."):
         from google.colab import files
         files.download(filepath)
