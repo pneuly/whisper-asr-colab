@@ -13,8 +13,7 @@ logger = getLogger(__name__)
 
 def faster_whisper_transcribe(
     # model options
-    model_size: str = "large-v3",
-    device: str = "auto",
+    model: Optional[FasterWhisperModel] = None,
 
     # transcribe options
     audio: Union[str, ndarray] = "",
@@ -28,14 +27,13 @@ def faster_whisper_transcribe(
     vad_filter: bool = True,
     log_progress: bool = False,
 
-    # other options
-    realtime: bool = False,
     ):
     logger.debug(f"batich_size: {batch_size}")
-    model = FasterWhisperModel(
-        model_size,
-        device=device,
-        compute_type="default",
+    if model is None:
+        model = FasterWhisperModel(
+            "large-v3-turbo",
+            device="auto",
+            compute_type="default",
     )
     if batch_size > 1: # batch mode
         batched_model = BatchedInferencePipeline(model=model)
@@ -77,12 +75,13 @@ def faster_whisper_transcribe(
 
 def realtime_transcribe(
         url: str,
-        model_size: str = "medium",
+        model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
         initial_prompt: Optional[str] = None,
     ) -> list[Segment]:
     segments = []
-    model = FasterWhisperModel(model_size)
+    if model is None:
+        model = FasterWhisperModel("large-v3-turbo")
     process = open_stream(url)
     buffer = b""
     fh1 = open(
@@ -105,7 +104,7 @@ def realtime_transcribe(
     stop_button.on_click(_stop_button_clicked)
 
     def _realtime_asr_loop(
-        model: str,
+        model,
         data: bytes,
         outfh: TextIO,
         initial_prompt: Optional[str] = None

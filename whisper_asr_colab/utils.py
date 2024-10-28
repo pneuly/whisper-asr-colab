@@ -3,7 +3,8 @@ from datetime import datetime
 from typing import List, Optional, Union
 from faster_whisper.transcribe import Segment
 from pyannote.core import Segment as TimeSegment
-from .diarize import Annotation
+
+
 def str2seconds(time_str: str) -> float:
     """Convert a time string to seconds."""
     for fmt in ("%H:%M:%S", "%M:%S", "%S", "%H:%M:%S.%f", "%M:%S.%f", "%S.%f"):
@@ -24,6 +25,54 @@ def format_timestamp(seconds: float) -> str:
     seconds = remain - (minutes * 60)
     return "{:01}:{:02}:{:05.2f}".format(int(hours), int(minutes), seconds)
 
+
+def combine_segments(segments: List[Union[Segment, TimeSegment]]):
+        head_seg = segments[0]
+        if isinstance(head_seg, Segment):
+            combined_seg = Segment(
+                    id = head_seg.id,
+                    seek = head_seg.seek,
+                    start = head_seg.start,
+                    end = segments[-1].end,
+                    text = "\n".join(seg.text for seg in segments).strip(),
+                    tokens = [token for seg in segments for token in seg.tokens],
+                    temperature = head_seg.temperature,
+                    avg_logprob = head_seg.avg_logprob,
+                    compression_ratio = head_seg.compression_ratio,
+                    no_speech_prob = head_seg.no_speech_prob,
+                    words = None,
+                )
+        elif isinstance(head_seg, TimeSegment):
+            combined_seg = TimeSegment(
+                start = head_seg.start,
+                end = segments[-1].end,
+            )
+        else:
+            raise TypeError("segments must be list of Segment or TimeSegment.")
+        return combined_seg
+
+
+def shift_segment_time(
+        segment: Union[Segment, TimeSegment],
+        offset: Union[int, float]
+    ) -> Union[Segment, TimeSegment]:
+    """"Shift a segment by offset"""
+    if isinstance(segment, Segment):
+        return Segment(
+            id=segment.id,
+            seek=segment.seek,
+            start=segment.start + offset,
+            end=segment.end + offset,
+            text=segment.text,
+            tokens=segment.tokens,
+            temperature=segment.temperature,
+            avg_logprob=segment.avg_logprob,
+            compression_ratio=segment.compression_ratio,
+            no_speech_prob=segment.no_speech_prob,
+            words=None,
+        )
+    if isinstance(segment, TimeSegment):
+        return TimeSegment(segment.start + offset, segment.end + offset)
 
 def time_segment_text(
         segment: Union[Segment, TimeSegment],
@@ -46,23 +95,6 @@ def add_timestamp(
     return (f"{time_segment_text(segment, timestamp_offset)} {segment.text.strip()}")
 
 
-def write_asr_result(
-        basename: str,
-        segments: List[Segment],
-        timestamp_offset: Optional[Union[int, float, str]] = 0.0
-        ) -> tuple[str, ...]:
-    """Write ASR segments to files with and without timestamps."""
-    outfilenames = (f"{basename}.txt", f"{basename}_timestamped.txt")
-    fh_text, fh_timestamped = [
-        open(filename, "w", encoding="utf-8") for filename in outfilenames
-    ]
-    for segment in segments:
-        fh_text.write(segment.text + "\n")
-        fh_timestamped.write(add_timestamp(segment, timestamp_offset) + "\n")
-    fh_text.close()
-    fh_timestamped.close()
-    return outfilenames
-
 def save_segments(jsonfile: str, segments: List[Segment]):
     """Save segments to a JSON file."""
     with open(jsonfile, 'w') as fh:
@@ -75,24 +107,6 @@ def load_segments(jsonfile: str) -> List[Segment]:
         data_list = jsonload(fh)
     return [Segment(**data) for data in data_list]
 
-
-def write_diarize_result(
-        basename: str,
-        annotations: List[Annotation],
-        timestamp_offset: Optional[Union[int, float, str]] = 0.0
-        ) -> tuple[str, ...]:
-    """Write diarized transcpript to a text file."""
-    outfilename = f"{basename}_diarized.txt"
-    fh = open(outfilename, "w", encoding="utf-8")
-    for segment, speaker in annotations:
-        fh.write(time_segment_text(segment, timestamp_offset) + " ")
-        if speaker:
-            fh.write(speaker + "\n")
-        else:
-            fh.write("\n")
-        fh.write(segment.text.replace(" ", "") + "\n\n")
-    fh.close()
-    return (outfilename,)
 
 def download_from_colab(filepath: str):
     """Download a file in Google Colab environment."""

@@ -1,25 +1,27 @@
-import sys
 import os
 import re
 import time
-from datetime import datetime
 import logging
 from torch.cuda import empty_cache
 from numpy import ndarray
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Union, Iterable, List
+from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
-from .audio import dl_audio, trim_audio
-from .utils import write_asr_result as _write_asr_result, write_diarize_result as _write_diarize_result, download_from_colab
+from .audio import dl_audio, trim_audio, load_audio
+from .utils import combine_segments, shift_segment_time, download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
+from .speakersegment import SpeakerSegment, assign_speakers, _combine_same_speakers, write_result
 
 
 @dataclass
 class Worker:
     # model options
-    model_size: str = "large-v3"
+    model_size: str = "large-v3-turbo"
     device: str = "auto"
+    model: Optional[FasterWhisperModel] = None
 
     # transcribe options
     audio: Union[str, ndarray] = "" # original audio path or data
@@ -43,8 +45,8 @@ class Worker:
     realtime: bool = False
 
     #result data
-    asr_segments: Optional[List] = None
-    diarized_segments: Optional[List] = None
+    asr_segments: Optional[List[SpeakerSegment]] = None  # result from whisper
+    diarized_segments: Optional[List[SpeakerSegment]] = None  # result from pyannote
 
     _input_audio: Union[str, ndarray] = "" # audio input to pass to whisper
 
@@ -71,21 +73,64 @@ class Worker:
                 self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
 
 
-    def transcribe(self):
+    def transcribe(self, start_time=None, end_time=None)->List[SpeakerSegment]:
         # Transcribe
+        if self.model is None:
+            self.model = FasterWhisperModel(
+                    self.model_size,
+                    device=self.device,
+                    compute_type="default",
+                )
         if self.realtime: # realtime trascription
-            self.asr_segments = realtime_transcribe(
+            segments = realtime_transcribe(
                 url = self.audio,
-                model_size = self.model_size,
+                model=self.model,
                 language = self.language,
                 initial_prompt = self.initial_prompt
             )
             empty_cache()
             #sys.exit(0)
         else:  # use faster-whisper
-            self.asr_segments, _ = faster_whisper_transcribe(
-                audio=self.input_audio,
-                model_size=self.model_size,
+            segments, _ = self.call_faster_whisper_transcribe(start_time, end_time)
+        return[SpeakerSegment(seg, None) for seg in segments]
+
+
+    def transcribe_segmented(self):
+        """Transcribe each diarized segment separately"""
+        if self.model is None:
+            self.model = FasterWhisperModel(
+                    self.model_size,
+                    device=self.device,
+                    compute_type="default",
+                )
+        asr_result = []
+        for data in _combine_same_speakers(self.diarized_segments):
+            segments, _ = self.call_faster_whisper_transcribe(
+                data.segment.start,
+                data.segment.end,
+            )
+            segments = [
+                shift_segment_time(item, data.segment.start)
+                for item in segments
+            ]
+            if segments:
+                asr_result.append(
+                    SpeakerSegment(
+                        segment = combine_segments(segments),
+                        speaker=data.speaker
+                    )
+                )
+        return asr_result
+
+
+    def call_faster_whisper_transcribe(self, start_time=None, end_time=None):
+        return faster_whisper_transcribe(
+                audio=load_audio(
+                    self.input_audio,
+                    start_time=start_time,
+                    end_time=end_time
+                ),
+                model=self.model,
                 language = self.language,
                 multilingual=self.multilingual,
                 initial_prompt=self.initial_prompt,
@@ -97,45 +142,44 @@ class Worker:
             )
 
     def diarize(self):
-        self.diarized_segments = _diarize(
+        return _diarize(
             audio=self.input_audio,
-            asr_segments=self.asr_segments,
             hugging_face_token=self.hugging_face_token,
         )
 
-    def write_asr_result(self) -> tuple[str, ...]:
-        # write results to text files
+    def _write_result(self, speakersegments, with_speakers=False):
         if isinstance(self.input_audio, str):
             outfilename = self.input_audio
         else:
             outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return _write_asr_result(
+        return write_result(
             outfilename,
-            self.asr_segments,
-            self.timestamp_offset
-        )
-
-    def write_diarize_result(self) -> tuple[str, ...]:
-        # write results to text files
-        return _write_diarize_result(
-            os.path.basename(self.input_audio),
-            self.diarized_segments,
-            self.timestamp_offset
+            speakersegments,
+            with_speakers,
+            self.timestamp_offset if self.timestamp_offset else 0.0
         )
 
     def run(self):
+        """ASR first and diarize"""
         files_to_download = []
         print("Transcribing...")
-        self.transcribe()
+        self.asr_segments = self.transcribe()
         print("Writing result...")
-        outfiles = self.write_asr_result()
+        outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
 
         print("Diarizing...")
         if self.diarization:
-            self.diarize()
+            self.diarized_segments = self.diarize()
             print("Writing result...")
-            diarized_txt = self.write_diarize_result()[0]
+            result = assign_speakers(
+                speakersegments=self.diarized_segments,
+                asr_segments=self.asr_segments
+            )
+            diarized_txt = self._write_result(
+                speakersegments=result,
+                with_speakers=True
+            )[0]
             files_to_download.append(diarized_txt)
 
             empty_cache()
@@ -144,6 +188,39 @@ class Worker:
             doc = DocxGenerator()
             doc.txt_to_word(diarized_txt)
             download_from_colab(doc.docfilename)
+        # DL audio file
+        if not self.audio == self.input_audio:
+            files_to_download.append(self.input_audio)
+
+        for file in files_to_download:
+            print(f"Downloading {file}")
+            download_from_colab(file)
+
+
+    def run2(self):
+        """Diarize first, and ASR for each diarized segment"""
+        files_to_download = []
+        print("Diarizing...")
+        self.diarized_segments = self.diarize()
+
+        print("Transcribing...")
+        self.asr_segments = self.transcribe_segmented()
+
+        print("Writing asr result...")
+        outfiles = self._write_result(self.asr_segments)
+        files_to_download.extend(outfiles)
+
+        print("Writing dia result...")
+        diarized_txt = self._write_result(self.asr_segments, with_speakers=True)[0]
+        files_to_download.append(diarized_txt)
+
+        empty_cache()
+
+        print("Writing to docx...")
+        doc = DocxGenerator()
+        doc.txt_to_word(diarized_txt)
+        download_from_colab(doc.docfilename)
+
         # DL audio file
         if not self.audio == self.input_audio:
             files_to_download.append(self.input_audio)
