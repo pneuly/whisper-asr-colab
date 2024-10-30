@@ -6,6 +6,7 @@ from numpy import ndarray
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Union, Iterable, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
 from .audio import dl_audio, trim_audio, load_audio
@@ -102,28 +103,39 @@ class Worker:
                     device=self.device,
                     compute_type="default",
                 )
-        asr_result = []
-        for data in _combine_same_speakers(self.diarized_segments):
+
+        def _transcribe_and_add_speakers(speakerseg):
+            asr_result = []
             segments, _ = self.call_faster_whisper_transcribe(
-                data.segment.start,
-                data.segment.end,
+                speakerseg.segment.start,
+                speakerseg.segment.end,
             )
-            segments = [
-                shift_segment_time(item, data.segment.start)
-                for item in segments
-            ]
             if segments:
                 asr_result.append(
                     SpeakerSegment(
                         segment = combine_segments(segments),
-                        speaker=data.speaker
+                        speaker=speakerseg.speaker
                     )
                 )
+            return asr_result
+
+        with ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(
+                    _transcribe_and_add_speakers,
+                    speakerseg,
+                ) for speakerseg in _combine_same_speakers(self.diarized_segments)
+            ]
+            asr_result = []
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    asr_result.extend(result)
         return asr_result
 
 
     def call_faster_whisper_transcribe(self, start_time=None, end_time=None):
-        return faster_whisper_transcribe(
+        segments, _ = faster_whisper_transcribe(
                 audio=load_audio(
                     self.input_audio,
                     start_time=start_time,
@@ -139,6 +151,13 @@ class Worker:
                 #chunk_length=self.chunk_length,
                 batch_size=self.batch_size,
             )
+        if segments and start_time:
+            segments = [
+                shift_segment_time(item, start_time)
+                for item in segments
+            ]
+        return segments, _
+
 
     def diarize(self):
         return _diarize(
