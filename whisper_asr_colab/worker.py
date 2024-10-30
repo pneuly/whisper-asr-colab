@@ -5,15 +5,15 @@ from torch.cuda import empty_cache
 from numpy import ndarray
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Union, Iterable, List
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, Union, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
 from .audio import dl_audio, trim_audio, load_audio
-from .utils import combine_segments, shift_segment_time, download_from_colab
+from .utils import download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
-from .speakersegment import SpeakerSegment, assign_speakers, _combine_same_speakers, write_result
+from .speakersegment import SpeakerSegmentList
 
 
 @dataclass
@@ -45,8 +45,8 @@ class Worker:
     realtime: bool = False
 
     #result data
-    asr_segments: Optional[List[SpeakerSegment]] = None  # result from whisper
-    diarized_segments: Optional[List[SpeakerSegment]] = None  # result from pyannote
+    asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
+    diarized_segments: Optional[SpeakerSegmentList] = None  # result from pyannote
 
     _input_audio: Union[str, ndarray] = "" # audio input to pass to whisper
 
@@ -73,7 +73,7 @@ class Worker:
                 self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
 
 
-    def transcribe(self, start_time=None, end_time=None)->List[SpeakerSegment]:
+    def transcribe(self, start_time=None, end_time=None)->SpeakerSegmentList:
         # Transcribe
         if self.model is None:
             self.model = FasterWhisperModel(
@@ -92,7 +92,7 @@ class Worker:
             #sys.exit(0)
         else:  # use faster-whisper
             segments, _ = self.call_faster_whisper_transcribe(start_time, end_time)
-        return[SpeakerSegment(seg, None) for seg in segments]
+        return segments
 
 
     def transcribe_segmented(self):
@@ -111,24 +111,20 @@ class Worker:
                 speakerseg.segment.end,
             )
             if segments:
-                asr_result.append(
-                    SpeakerSegment(
-                        segment = combine_segments(segments),
-                        speaker=speakerseg.speaker
-                    )
-                )
+                segment = segments.combined
+                segment.speaker = speakerseg.speaker
+                asr_result.append(segment)
             return asr_result
 
         with ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(
-                    _transcribe_and_add_speakers,
-                    speakerseg,
-                ) for speakerseg in _combine_same_speakers(self.diarized_segments)
-            ]
+            speakersegs = self.diarized_segments.combine_same_speakers
+            procs = []
+            for seg in speakersegs:
+                procs.append(executor.submit(_transcribe_and_add_speakers, seg))
+            executor.shutdown(wait=True)
             asr_result = []
-            for future in as_completed(futures):
-                result = future.result()
+            for proc in procs:
+                result = proc.result()
                 if result:
                     asr_result.extend(result)
         return asr_result
@@ -153,7 +149,7 @@ class Worker:
             )
         if segments and start_time:
             segments = [
-                shift_segment_time(item, start_time)
+                item.shift_segment_time(start_time)
                 for item in segments
             ]
         return segments, _
@@ -165,14 +161,14 @@ class Worker:
             hugging_face_token=self.hugging_face_token,
         )
 
-    def _write_result(self, speakersegments, with_speakers=False):
+    def _write_result(self, with_speakers=False):
         if isinstance(self.input_audio, str):
             outfilename = self.input_audio
         else:
             outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return write_result(
+        segments =  self.diarized_segments if with_speakers else self.asr_segments
+        return segments.write_result(
             outfilename,
-            speakersegments,
             with_speakers,
             self.timestamp_offset if self.timestamp_offset else 0.0
         )
@@ -183,21 +179,17 @@ class Worker:
         print("Transcribing...")
         self.asr_segments = self.transcribe()
         print("Writing result...")
-        outfiles = self._write_result(self.asr_segments)
+        outfiles = self._write_result(with_speakers=False)
         files_to_download.extend(outfiles)
 
         print("Diarizing...")
         if self.diarization:
             self.diarized_segments = self.diarize()
             print("Writing result...")
-            result = assign_speakers(
-                speakersegments=self.diarized_segments,
-                asr_segments=self.asr_segments
+            self.diarized_segments = self.asr_segments.assign_speakers(
+                diarization_result=self.diarized_segments
             )
-            diarized_txt = self._write_result(
-                speakersegments=result,
-                with_speakers=True
-            )[0]
+            diarized_txt = self._write_result(with_speakers=True)[0]
             files_to_download.append(diarized_txt)
 
             empty_cache()
@@ -225,11 +217,11 @@ class Worker:
         self.asr_segments = self.transcribe_segmented()
 
         print("Writing asr result...")
-        outfiles = self._write_result(self.asr_segments)
+        outfiles = self._write_result()
         files_to_download.extend(outfiles)
 
         print("Writing dia result...")
-        diarized_txt = self._write_result(self.asr_segments, with_speakers=True)[0]
+        diarized_txt = self._write_result(with_speakers=True)[0]
         files_to_download.append(diarized_txt)
 
         empty_cache()

@@ -1,24 +1,16 @@
 import time
+import copy
 import random
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from typing import List, NamedTuple, Optional
-
-class DiarizedSegment(NamedTuple):
-    start: float
-    end: float
-    speaker: Optional[str] = None
-    intersection: Optional[float] = None
-
-    @property
-    def duration(self):
-        return(self.end - self.start)
+from typing import Optional
+from ..whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
 
 def original_assign_speakers(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: SpeakerSegmentList,
+        asr_segments: SpeakerSegmentList,
+    ) -> SpeakerSegmentList:
 
     diarize_df = pd.DataFrame(dia_segments, columns=['segment', 'speaker'])
     diarize_df['start'] = diarize_df['segment'].apply(lambda x: x.start)
@@ -32,16 +24,16 @@ def original_assign_speakers(
         result = dia_tmp.groupby("speaker")["intersection"].sum()
         return result.idxmax(), result.max()
 
-    diarized_segs = []
-    for seg in asr_segments:
+    diarized_segs = copy.deepcopy(asr_segments)
+    for seg in diarized_segs:
         speaker, isec = _get_speaker(seg.start, seg.end)
-        diarized_segs.append(DiarizedSegment(seg.start, seg.end, speaker))
+        seg.speaker = speaker
     return diarized_segs
 
 def optimized_assign_speakers(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: SpeakerSegmentList,
+        asr_segments: SpeakerSegmentList,
+    ) -> SpeakerSegmentList:
 
     #diarize_start, diarize_end, diarize_speakers = np.array(
     #    [(item[0].start, item[0].end, item[1]) for item in dia_segments], dtype=object).T
@@ -68,15 +60,15 @@ def optimized_assign_speakers(
         return speaker
 
     diarized_segs = [
-        DiarizedSegment(seg.start, seg.end, _get_speaker(seg.start, seg.end))
+        SpeakerSegment(start=seg.start, end=seg.end, speaker=_get_speaker(seg.start, seg.end))
         for seg in asr_segments
     ]
-    return diarized_segs
+    return SpeakerSegmentList(*diarized_segs)
 
 def optimized_assign_speakers2(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: SpeakerSegmentList,
+        asr_segments: SpeakerSegmentList,
+    ) -> SpeakerSegmentList:
 
     # Precompute start, end, and speaker arrays from diarization DataFrame
     diarize_start = np.array([item[0].start for item in dia_segments])
@@ -118,16 +110,16 @@ def optimized_assign_speakers2(
 
     # Create DiarizedSegment instances with assigned speakers
     diarized_segs = [
-        DiarizedSegment(start, end, speaker)
+        SpeakerSegment(start=start, end=end, speaker=speaker)
         for start, end, speaker in zip(asr_start, asr_end, asr_speakers)
     ]
 
     return diarized_segs
 
 def optimized_assign_speakers3(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: SpeakerSegmentList,
+        asr_segments: SpeakerSegmentList,
+    ) -> SpeakerSegmentList:
 
     starts = [item[0].start for item in dia_segments]
     ends = [item[0].end for item in dia_segments]
@@ -156,15 +148,15 @@ def optimized_assign_speakers3(
 
 
     diarized_segs = [
-        DiarizedSegment(seg.start, seg.end, next(_get_speaker(seg.start, seg.end)))
+        SpeakerSegment(start=seg.start, end=seg.end, speaker=next(_get_speaker(seg.start, seg.end)))
         for seg in asr_segments
     ]
     return diarized_segs
 
 def optimized_assign_speakers4(
-        dia_segments: List[DiarizedSegment],
-        asr_segments: List[DiarizedSegment],
-    ) -> List[DiarizedSegment]:
+        dia_segments: SpeakerSegmentList,
+        asr_segments: SpeakerSegmentList,
+    ) -> SpeakerSegmentList:
 
     diarize_start = np.array([item[0].start for item in dia_segments])
     diarize_end = np.array([item[0].end for item in dia_segments])
@@ -193,7 +185,7 @@ def optimized_assign_speakers4(
         return speaker
 
     diarized_segs = [
-        DiarizedSegment(seg.start, seg.end, _get_speaker(seg.start, seg.end))
+        SpeakerSegment(start=seg.start, end=seg.end, speaker=_get_speaker(seg.start, seg.end))
         for seg in asr_segments
     ]
     return diarized_segs
@@ -211,10 +203,7 @@ def segment_generator(size, min_duration=0.5, max_duration=10.0, has_speaker=Fal
     speaker = 1
     for i in range(num_diarized_segments):
         duration = random.uniform(0.5, 10.0)
-        args = [start_time, start_time + duration,]
-        segment = DiarizedSegment(
-                    *args,
-        )
+        segment = SpeakerSegment(start=start_time, end=start_time + duration)
         start_time += duration
         if has_speaker:
             segments.append((segment, speaker))

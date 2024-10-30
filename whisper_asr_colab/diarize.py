@@ -2,12 +2,11 @@ import logging
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy as torch_from_numpy
 from numpy import ndarray
-from typing import List, Union, Optional
+from typing import Union, Optional
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
 from .audio import load_audio
-from .speakersegment import SpeakerSegment
-
+from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 class DiarizationPipeline:
     def __init__(
@@ -29,7 +28,7 @@ class DiarizationPipeline:
             audio: Union[str, ndarray],
             min_duration_on=1.5,  # remove speech regions shorter than this seconds.
             min_duration_off=1.5,  # fill non-speech regions shorter than this seconds.
-            ) -> List[SpeakerSegment]:
+            ) -> SpeakerSegmentList:
         if isinstance(audio, str):
             audio = load_audio(audio)
         audio_data = {
@@ -38,19 +37,33 @@ class DiarizationPipeline:
         }
         self.pipeline.min_duration_on = min_duration_on
         self.pipeline.min_duration_off = min_duration_off
+        speaker_segments = SpeakerSegmentList()
         with ProgressHook() as hook:
-            speakersegments = [
-                SpeakerSegment(segment, speaker)
-                for segment, _, speaker in self.pipeline(
-                    audio_data, hook=hook,).itertracks(yield_label=True)
-            ]
-        return speakersegments
+            for time_segment, _, speaker in self.pipeline(
+                    audio_data, hook=hook,).itertracks(yield_label=True):
+                speaker_segments.append(
+                    SpeakerSegment(
+                        start=time_segment.start,
+                        end=time_segment.end,
+                        speaker=speaker
+                    )
+                )
+
+        #    speaker_segments = SpeakerSegmentList(*[
+        #        SpeakerSegment(
+        #            start=time_segment.start,
+        #            end=time_segment.end,
+        #            speaker=speaker
+        #        ) for time_segment, _, speaker in self.pipeline(
+        #            audio_data, hook=hook,).itertracks(yield_label=True)
+        #    ])
+        return speaker_segments
 
 
 def diarize(
         audio: Union[str, ndarray],
         hugging_face_token: str,
-    ) -> List[SpeakerSegment]:
+    ) -> SpeakerSegmentList:
 
     diarize_model = DiarizationPipeline(use_auth_token=hugging_face_token)
     diarized_result = diarize_model(audio)
