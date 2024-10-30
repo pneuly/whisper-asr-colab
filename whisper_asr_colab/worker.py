@@ -1,7 +1,6 @@
 import os
 import re
 import time
-import logging
 from torch.cuda import empty_cache
 from numpy import ndarray
 from datetime import datetime
@@ -38,10 +37,10 @@ class Worker:
     # other options
     diarization: bool = True
     hugging_face_token: str = ""
-    password: Optional[str] = None
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
-    timestamp_offset: Optional[str] = None
+    password: str = ""
+    start_time: str = ""
+    end_time: str = ""
+    timestamp_offset: str = ""
     realtime: bool = False
 
     #result data

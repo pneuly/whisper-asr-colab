@@ -4,6 +4,7 @@ from torch import device as torch_device, from_numpy as torch_from_numpy
 from numpy import ndarray
 from typing import List, Union, Optional
 from pyannote.audio import Pipeline
+from pyannote.audio.pipelines.utils.hook import ProgressHook
 from .audio import load_audio
 from .speakersegment import SpeakerSegment
 
@@ -20,10 +21,14 @@ class DiarizationPipeline:
             logging.info(f"Using device {device}")
         if isinstance(device, str):
             device = torch_device(device)
-        self.model = Pipeline.from_pretrained(model_name, use_auth_token=use_auth_token).to(device)
+        self.pipeline = Pipeline.from_pretrained(
+            model_name, use_auth_token=use_auth_token).to(device)
 
     def __call__(
-            self, audio: Union[str, ndarray], num_speakers=None, min_speakers=None, max_speakers=None, min_duration_on=2.0
+            self,
+            audio: Union[str, ndarray],
+            min_duration_on=1.5,  # remove speech regions shorter than this seconds.
+            min_duration_off=1.5,  # fill non-speech regions shorter than this seconds.
             ) -> List[SpeakerSegment]:
         if isinstance(audio, str):
             audio = load_audio(audio)
@@ -31,16 +36,14 @@ class DiarizationPipeline:
             'waveform': torch_from_numpy(audio[None, :]),
             'sample_rate': 16000
         }
-        #self.model.instantiate({'min_duration_on': min_duration_on})
-        annotation_generator = self.model(
-            audio_data,
-            num_speakers = num_speakers,
-            min_speakers=min_speakers,
-            max_speakers=max_speakers,)
-        speakersegments = [
-            SpeakerSegment(segment, speaker)
-            for segment, _, speaker in annotation_generator.itertracks(yield_label=True)
-        ]
+        self.pipeline.min_duration_on = min_duration_on
+        self.pipeline.min_duration_off = min_duration_off
+        with ProgressHook() as hook:
+            speakersegments = [
+                SpeakerSegment(segment, speaker)
+                for segment, _, speaker in self.pipeline(
+                    audio_data, hook=hook,).itertracks(yield_label=True)
+            ]
         return speakersegments
 
 
