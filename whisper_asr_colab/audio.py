@@ -6,6 +6,7 @@ import ffmpeg
 from typing import Union, Optional
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 
+
 def dl_audio(url: str, password: str = ""):
     """Download file from Internet"""
     # YoutubeDL class causes download errors, using external command instead
@@ -67,6 +68,7 @@ def load_audio(
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
     return np_frombuffer(out, np_int16).flatten().astype(np_float32) / 32768.0
+
 
 def open_stream(url: str) -> subprocess.Popen:
     command = ["yt-dlp", "-g", url, "-x", "-S", "+acodec:mp4a"]

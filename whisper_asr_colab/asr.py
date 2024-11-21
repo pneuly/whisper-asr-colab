@@ -2,7 +2,7 @@ import time
 import datetime
 from logging import getLogger
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
-from typing import Union, Optional, Iterable, TextIO, Any
+from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from IPython.display import display
 import ipywidgets as widgets
@@ -16,7 +16,7 @@ def faster_whisper_transcribe(
     model: Optional[FasterWhisperModel] = None,
 
     # transcribe options
-    audio: Union[str, ndarray] = "",
+    audio: Union[str, BinaryIO, ndarray] = "",
     language: Optional[str] = None,
     multilingual: bool = False,
     initial_prompt: Optional[Union[str, Iterable[int]]] = None,

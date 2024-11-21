@@ -38,7 +38,7 @@ class SpeakerSegment(Segment):
         return self
 
     def shift_time(self, offset: Union[int, float]):
-        self.start += offset,
+        self.start += offset
         self.end += offset
 
 
@@ -75,7 +75,7 @@ class SpeakerSegmentList(List):
                     seek = head_seg.seek,
                     start = head_seg.start,
                     end = self[-1].end,
-                    text = "\n".join(seg.text for seg in self).strip(),
+                    text = "\n".join(str(seg.text) for seg in self).strip(),
                     #tokens = [token for seg in self for token in seg.tokens],
                     tokens = [],  #strip tokens to reduce the use of memory
                     temperature = head_seg.temperature,
