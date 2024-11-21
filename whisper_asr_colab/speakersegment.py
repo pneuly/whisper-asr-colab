@@ -6,6 +6,9 @@ from dataclasses import dataclass, field, asdict
 from typing import Union, Optional, List
 from faster_whisper.transcribe import Segment
 from .utils import str2seconds, format_timestamp
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 @dataclass
 class SpeakerSegment(Segment):
@@ -105,6 +108,7 @@ class SpeakerSegmentList(List):
             combine_same_speakers: bool = True,
         ) -> SpeakerSegmentList:
         """Assign speakers for to ASR result based on diarization result"""
+
         dia_segments_size = len(diarization_result) - 1
         i = 0
         durations = defaultdict(float)
@@ -112,17 +116,27 @@ class SpeakerSegmentList(List):
         for asr_seg in self:
             while i <= dia_segments_size:
                 dia_seg = diarization_result[i]
+                logger.debug(f"i:{i} speaker:{dia_seg.speaker} dia_seg.start:{dia_seg.start} dia_seg.end:{dia_seg.end}")
                 if asr_seg.end < dia_seg.start:  # run out of the target segment
                     break
                 # calc overlap duration of asr and diarization
-                start = min(asr_seg.end, dia_seg.end)
-                end = max(asr_seg.start, dia_seg.start)
+                start = max(asr_seg.start, dia_seg.start)
+                end = min(asr_seg.end, dia_seg.end)
                 duration = end - start
                 if duration > 0.0:
                     durations[dia_seg.speaker] += duration
                 i += 1
             # assign the speaker who have longest overlap in each segment
             asr_seg.speaker = max(durations, key=durations.get, default=None)
+
+            #logger.debug(f"{asr_seg.text}")
+            #if durations:
+            #    for key, value in durations.items():
+            #        print(f"{key} : {value}")
+            #else:
+            #    logger.debug("empty durations")
+            #logger.debug("\n")
+
             diarized_segs.append(asr_seg)
             durations.clear()
             i -= 1
