@@ -1,8 +1,10 @@
 from whisper_asr_colab.asr import faster_whisper_transcribe
+from faster_whisper import WhisperModel as FasterWhisperModel
 
 def perform_asr(audio:str, batch_size:int):
+    model = FasterWhisperModel("tiny")
     segments, info = faster_whisper_transcribe(
-        model_size="tiny",
+        model=model,
         audio=audio,
         batch_size=batch_size,
     )
