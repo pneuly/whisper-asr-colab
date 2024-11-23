@@ -29,12 +29,12 @@ class DiarizationPipeline:
             min_duration_on=1.5,  # remove speech regions shorter than this seconds.
             min_duration_off=1.5,  # fill non-speech regions shorter than this seconds.
             ) -> SpeakerSegmentList:
-        if isinstance(audio, str):
-            audio = load_audio(audio)
+        _audio = audio if isinstance(audio, ndarray) else load_audio(audio) 
         audio_data = {
-            'waveform': torch_from_numpy(audio[None, :]),
+            'waveform': torch_from_numpy(_audio[None, :]),
             'sample_rate': 16000
         }
+        del _audio
         self.pipeline.min_duration_on = min_duration_on
         self.pipeline.min_duration_off = min_duration_off
         speaker_segments = SpeakerSegmentList()
@@ -48,7 +48,7 @@ class DiarizationPipeline:
                         speaker=speaker
                     )
                 )
-
+        del audio_data
         #    speaker_segments = SpeakerSegmentList(*[
         #        SpeakerSegment(
         #            start=time_segment.start,

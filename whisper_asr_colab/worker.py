@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import gc
 from torch.cuda import empty_cache
 from numpy import ndarray
 from datetime import datetime
@@ -155,6 +156,7 @@ class Worker:
                 #chunk_length=self.chunk_length,
                 batch_size=self.batch_size,
             )
+        del audio
         if segments and start_time:
             for item in segments:
                 item.shift_time(start_time)
@@ -186,6 +188,9 @@ class Worker:
         print("Writing result...")
         outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
+        del self.model
+        empty_cache()
+        gc.collect()
 
         print("Diarizing...")
         if self.diarization:
@@ -196,7 +201,6 @@ class Worker:
             )
             diarized_txt = self._write_result(self.diarized_segments, with_speakers=True)[0]
             files_to_download.append(diarized_txt)
-
             empty_cache()
 
             print("Writing to docx...")

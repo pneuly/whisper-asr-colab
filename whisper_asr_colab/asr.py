@@ -6,7 +6,7 @@ from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from IPython.display import display
 import ipywidgets as widgets
-from .audio import load_audio, open_stream
+from .audio import open_stream
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 logger = getLogger(__name__)
@@ -37,9 +37,6 @@ def faster_whisper_transcribe(
     )
     if batch_size > 1: # batch mode
         batched_model = BatchedInferencePipeline(model=model)
-        # load_audio prevents excessive memory use by avoiding loading large audio file all at once.
-        if isinstance(audio, str):
-            audio = load_audio(audio)
         segments_generator, info = batched_model.transcribe(
             audio=audio,
             language=language,
@@ -53,8 +50,6 @@ def faster_whisper_transcribe(
         )
     else: # sequential mode
         logger.info(f"batch_size is set to less than 2. ({batch_size}). Using equential mode.")
-        if isinstance(audio, str):
-            audio = load_audio(audio)
         segments_generator, info = model.transcribe(
             audio=audio,
             language=language,
