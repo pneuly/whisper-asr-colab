@@ -2,22 +2,21 @@ import time
 import datetime
 from logging import getLogger
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
-from typing import Union, Optional, Iterable, TextIO
+from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
-from faster_whisper.transcribe import Segment
 from IPython.display import display
 import ipywidgets as widgets
-from .audio import load_audio, open_stream
+from .audio import open_stream
+from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 logger = getLogger(__name__)
 
 def faster_whisper_transcribe(
     # model options
-    model_size: str = "large-v3",
-    device: str = "auto",
+    model: Optional[FasterWhisperModel] = None,
 
     # transcribe options
-    audio: Union[str, ndarray] = "",
+    audio: Union[str, BinaryIO, ndarray] = "",
     language: Optional[str] = None,
     multilingual: bool = False,
     initial_prompt: Optional[Union[str, Iterable[int]]] = None,
@@ -27,21 +26,17 @@ def faster_whisper_transcribe(
     prefix: Optional[str] = None,
     vad_filter: bool = True,
     log_progress: bool = False,
+    ) -> tuple[SpeakerSegmentList, Any]:
 
-    # other options
-    realtime: bool = False,
-    ):
     logger.debug(f"batich_size: {batch_size}")
-    model = FasterWhisperModel(
-        model_size,
-        device=device,
-        compute_type="default",
+    if model is None:
+        model = FasterWhisperModel(
+            "large-v3-turbo",
+            device="auto",
+            compute_type="default",
     )
     if batch_size > 1: # batch mode
         batched_model = BatchedInferencePipeline(model=model)
-        # load_audio prevents excessive memory use by avoiding loading large audio file all at once.
-        if isinstance(audio, str):
-            audio = load_audio(audio)
         segments_generator, info = batched_model.transcribe(
             audio=audio,
             language=language,
@@ -55,8 +50,6 @@ def faster_whisper_transcribe(
         )
     else: # sequential mode
         logger.info(f"batch_size is set to less than 2. ({batch_size}). Using equential mode.")
-        if isinstance(audio, str):
-            audio = load_audio(audio)
         segments_generator, info = model.transcribe(
             audio=audio,
             language=language,
@@ -68,21 +61,22 @@ def faster_whisper_transcribe(
             condition_on_previous_text=False, # supress hallucination and repetitive text
             without_timestamps=False,
         )
-    segments = []
+    segments = SpeakerSegmentList()
     for segment in segments_generator:
         print(segment.text)
-        segments.append(segment)
+        segments.append(SpeakerSegment.from_segment(segment))
     logger.info(f"Transcribed segments:\n{segments}")
     return segments, info
 
 def realtime_transcribe(
         url: str,
-        model_size: str = "medium",
+        model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
         initial_prompt: Optional[str] = None,
-    ) -> list[Segment]:
+    ) -> SpeakerSegmentList:
     segments = []
-    model = FasterWhisperModel(model_size)
+    if model is None:
+        model = FasterWhisperModel("large-v3-turbo")
     process = open_stream(url)
     buffer = b""
     fh1 = open(
@@ -105,11 +99,11 @@ def realtime_transcribe(
     stop_button.on_click(_stop_button_clicked)
 
     def _realtime_asr_loop(
-        model: str,
+        model,
         data: bytes,
         outfh: TextIO,
         initial_prompt: Optional[str] = None
-        ) -> list[Segment]:
+        ) -> SpeakerSegmentList:
         segments, _ =  model.transcribe(
             audio=np_frombuffer(data, np_int16).astype(np_float32) / 32768.0,
             language=language,
@@ -124,14 +118,14 @@ def realtime_transcribe(
     while not stop_transcribing:
         audio_data = process.stdout.read(16000 * 2)
         if process.poll() is not None:
-            segments.append(_realtime_asr_loop(model, buffer, fh1))
+            segments += _realtime_asr_loop(model, buffer, fh1)
             break
 
         buffer += audio_data
         if len(buffer) >= 16000 * 2 * 30:  # 30 seconds
-            segments.append(_realtime_asr_loop(model, buffer, fh1))
+            segments += _realtime_asr_loop(model, buffer, fh1)
             buffer = buffer[- 16000:]  # 0.5 seconds overlap
         else:
             time.sleep(0.1)
     fh1.close()
-    return segments
+    return SpeakerSegmentList(*[SpeakerSegment.from_segment(segment) for segment in segments])
