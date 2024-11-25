@@ -180,7 +180,7 @@ class Worker:
             self.timestamp_offset if self.timestamp_offset else 0.0
         )
 
-    def run(self):
+    def run(self, download:bool = True):
         """ASR first and diarize"""
         files_to_download = []
         print("Transcribing...")
@@ -206,17 +206,19 @@ class Worker:
             print("Writing to docx...")
             doc = DocxGenerator()
             doc.txt_to_word(diarized_txt)
-            download_from_colab(doc.docfilename)
+            if download:
+                download_from_colab(doc.docfilename)
         # DL audio file
         if not self.audio == self.input_audio:
             files_to_download.append(self.input_audio)
 
-        for file in files_to_download:
-            print(f"Downloading {file}")
-            download_from_colab(file)
+        if download:
+            for file in files_to_download:
+                print(f"Downloading {file}")
+                download_from_colab(file)
 
 
-    def run2(self):
+    def run2(self, download:bool = True):
         """Diarize first, and ASR for each diarized segment"""
         files_to_download = []
         print("Diarizing...")
@@ -238,12 +240,14 @@ class Worker:
         print("Writing to docx...")
         doc = DocxGenerator()
         doc.txt_to_word(diarized_txt)
-        download_from_colab(doc.docfilename)
+        if download:
+            download_from_colab(doc.docfilename)
 
         # DL audio file
         if not self.audio == self.input_audio:
             files_to_download.append(self.input_audio)
 
-        for file in files_to_download:
-            print(f"Downloading {file}")
-            download_from_colab(file)
+        if download:
+            for file in files_to_download:
+                print(f"Downloading {file}")
+                download_from_colab(file)
