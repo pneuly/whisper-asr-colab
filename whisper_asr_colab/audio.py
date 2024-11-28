@@ -5,7 +5,7 @@ import subprocess
 import ffmpeg
 from typing import Union, Optional
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
-
+from .utils import sanitize_filename
 
 def dl_audio(url: str, password: str = ""):
     """Download file from Internet"""
@@ -25,9 +25,11 @@ def dl_audio(url: str, password: str = ""):
 
 def trim_audio(
         audiopath: str,
-        start_time: str = "",
-        end_time: str = ""
+        start_time: Union[str, int, float] = "",
+        end_time: Union[str, int, float] = ""
     ):
+    start_time = str(start_time)
+    end_time = str(end_time)
     if start_time and end_time:
         input = ffmpeg.input(audiopath, ss=start_time, to=end_time)
     elif not start_time and end_time:
@@ -35,8 +37,8 @@ def trim_audio(
     else:
         input = ffmpeg.input(audiopath, ss=start_time)
     input_base, input_ext = os.path.splitext(audiopath)
-    input_path = f"{input_base}_trimmed{input_ext}"
-    print(f"trimming audio from {start_time} to {end_time}.")
+    input_path = f"{input_base}_{sanitize_filename(start_time)}_{sanitize_filename(end_time)}{input_ext}"
+    print(f"Trimming audio from {start_time} to {end_time}.")
     ffmpeg.output(input, input_path, acodec="copy", vcodec="copy").run(
             overwrite_output=True
             )
@@ -88,6 +90,29 @@ def open_stream(url: str) -> subprocess.Popen:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
+
+
+def get_silence_duration(audio_file) -> float:
+    """get silence duration at the top of the audio"""
+    output = subprocess.run(
+        [
+            "ffmpeg",
+            "-i", audio_file,
+            "-af", "silencedetect=noise=-50dB:d=5",
+            "-f", "null", "-"
+        ],
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8"
+    )
+    result = []
+    silence_duration = 0.0
+    for line in output.stderr.splitlines():
+        if "silencedetect" in line:
+            result.append(line)
+    if len(result) > 0 and "silence_start: 0" in result[0]:
+        silence_duration = float(result[1].split()[-1])
+    return silence_duration
 
 
 def subprocess_progress(cmd: list):

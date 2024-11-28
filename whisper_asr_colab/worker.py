@@ -10,7 +10,7 @@ from typing import Optional, Union, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
-from .audio import dl_audio, trim_audio, load_audio
+from .audio import dl_audio, trim_audio, load_audio, get_silence_duration
 from .utils import download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
@@ -44,6 +44,7 @@ class Worker:
     end_time: str = ""
     timestamp_offset: str = ""
     realtime: bool = False
+    trim_silence: bool = True  # If True, trim leading silence from the audio
 
     #result data
     asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
@@ -71,7 +72,14 @@ class Worker:
                         # File uploading seems incomplete
                         raise IOError("Upload seems incomplete. Run again after the upload is finished.")
             if self.start_time or self.end_time: # trim if specified
+                print("Trimming the audio file.")
                 self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
+            elif self.trim_silence:
+                sec = get_silence_duration(self._input_audio)
+                if sec > 0.0:
+                    print("Trimming leading silent part.")
+                    self._input_audio = trim_audio(self._input_audio, sec)
+                    self.start_time = sec
 
 
     def transcribe(
