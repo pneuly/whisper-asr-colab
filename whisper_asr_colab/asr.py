@@ -2,7 +2,7 @@ import time
 import datetime
 from logging import getLogger
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
-from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
+from typing import Union, Optional, Iterable, TextIO, BinaryIO, List, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from IPython.display import display
 import ipywidgets as widgets
@@ -25,6 +25,7 @@ def faster_whisper_transcribe(
     batch_size: int = 16,
     prefix: Optional[str] = None,
     vad_filter: bool = True,
+    clip_timestamps: Optional[List[dict]] = [],
     log_progress: bool = False,
     ) -> tuple[SpeakerSegmentList, Any]:
 
@@ -55,6 +56,7 @@ def faster_whisper_transcribe(
             language=language,
             multilingual=multilingual,
             vad_filter=vad_filter,
+            clip_timestamps=clip_timestamps,
             initial_prompt=initial_prompt,
             hotwords=hotwords,
             prefix=prefix,

@@ -96,22 +96,34 @@ class Worker:
             empty_cache()
             #sys.exit(0)
         else:  # use faster-whisper
-            segments, _ = self.call_faster_whisper_transcribe(start_time, end_time)
-        return segments
-
+            audio = load_audio(
+                        self.input_audio,
+                        start_time=start_time,
+                        end_time=end_time
+                    )
+            segments, _ = faster_whisper_transcribe(
+                    audio=audio,
+                    model=self.model,
+                    language = self.language,
+                    multilingual=self.multilingual,
+                    initial_prompt=self.initial_prompt,
+                    hotwords = self.hotwords,
+                    prefix = self.prefix,
+                    vad_filter=self.vad_filter,
+                    #chunk_length=self.chunk_length,
+                    batch_size=self.batch_size,
+                )
+            del audio
+            if segments and start_time:
+                for item in segments:
+                    item.shift_time(start_time)
+            return segments
 
     def transcribe_segmented(self)->SpeakerSegmentList:
         """Transcribe each diarized segment separately"""
-        if self.model is None:
-            self.model = FasterWhisperModel(
-                    self.model_size,
-                    device=self.device,
-                    compute_type="default",
-                )
-
         def _transcribe_and_add_speakers(speakerseg):
             asr_result = SpeakerSegmentList()
-            segments, _ = self.call_faster_whisper_transcribe(
+            segments, _ = self.transcribe(
                 speakerseg.start,
                 speakerseg.end,
             )
@@ -133,34 +145,6 @@ class Worker:
                 if result:
                     asr_result.extend(result)
         return asr_result
-
-
-    def call_faster_whisper_transcribe(
-            self,
-            start_time: Optional[Union[int, float]] = None,
-            end_time: Optional[Union[int, float]] = None):
-        audio = load_audio(
-                    self.input_audio,
-                    start_time=start_time,
-                    end_time=end_time
-                )
-        segments, _ = faster_whisper_transcribe(
-                audio=audio,
-                model=self.model,
-                language = self.language,
-                multilingual=self.multilingual,
-                initial_prompt=self.initial_prompt,
-                hotwords = self.hotwords,
-                prefix = self.prefix,
-                vad_filter=self.vad_filter,
-                #chunk_length=self.chunk_length,
-                batch_size=self.batch_size,
-            )
-        del audio
-        if segments and start_time:
-            for item in segments:
-                item.shift_time(start_time)
-        return segments, _
 
 
     def diarize(self):
