@@ -107,14 +107,14 @@ class Worker:
 
         # use faster-whisper
         else:
-            audio = load_audio(
-                        self.input_audio,
-                        start_time=start_time,
-                        end_time=end_time,
-                        data_type="numpy",
-                    )
+            #audio = load_audio(
+            #            self.input_audio,
+            #            start_time=start_time,
+            #            end_time=end_time,
+            #            data_type="numpy",
+            #        )
             segments, _ = faster_whisper_transcribe(
-                    audio=audio,
+                    audio=self.input_audio,
                     model=self.model,
                     language = self.language,
                     multilingual=self.multilingual,
