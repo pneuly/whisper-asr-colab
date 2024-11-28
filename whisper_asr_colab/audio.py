@@ -3,6 +3,8 @@ import os
 import time
 import subprocess
 import ffmpeg
+import torchaudio
+from io import BytesIO
 from typing import Union, Optional
 from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 
@@ -42,19 +44,20 @@ def trim_audio(
             )
     return input_path
 
-def load_audio(
+def read_audio(
         file: str,
         sr: int = 16000,
+        format: str = "s16le", # output format
         start_time: Optional[Union[int, float, str]] = None,
         end_time: Optional[Union[int, float, str]] = None
-    ) -> ndarray:
+):
     try:
         cmd = [
             "ffmpeg",
             "-nostdin",
             "-threads", "0",
             "-i", file,
-            "-f", "s16le",
+            "-f", format,
             "-ac", "1",
             "-acodec", "pcm_s16le",
             "-ar", str(sr),
@@ -64,13 +67,12 @@ def load_audio(
         if end_time:
             cmd.extend(["-to", str(end_time)])
         cmd.append("-")
-        out = subprocess.run(cmd, capture_output=True, check=True).stdout
+        return subprocess.run(cmd, capture_output=True, check=True).stdout
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-    return np_frombuffer(out, np_int16).flatten().astype(np_float32) / 32768.0
 
 
-def open_stream(url: str) -> subprocess.Popen:
+def open_live_stream(url: str) -> subprocess.Popen:
     command = ["yt-dlp", "-g", url, "-x", "-S", "+acodec:mp4a"]
     audio_url = subprocess.check_output(command).decode("utf-8").strip()
     return subprocess.Popen(
@@ -88,6 +90,31 @@ def open_stream(url: str) -> subprocess.Popen:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
+
+
+def load_audio(
+        file: str,
+        sr: int = 16000,
+        start_time: Optional[Union[int, float, str]] = None,
+        end_time: Optional[Union[int, float, str]] = None,
+        data_type: str = "numpy" #torch or numpy
+    ):
+    format = "s16le" if (data_type == "numpy") else "wav"
+    stream = read_audio(
+        file=file,
+        sr=sr,
+        format=format,
+        start_time=start_time,
+        end_time=end_time
+    )
+    if data_type == "numpy":
+        return np_frombuffer(stream, np_int16).flatten().astype(np_float32) / 32768.0
+    elif data_type == "torch":
+        out, sr = torchaudio.load(stream, format=format)
+        print(sr)
+        return out
+    else:
+        raise ValueError("data_type has to be 'numpy' or 'torch'")
 
 
 def subprocess_progress(cmd: list):

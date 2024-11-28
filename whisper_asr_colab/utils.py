@@ -1,5 +1,7 @@
 from datetime import datetime
-
+import silero_vad
+import gc
+from .audio import load_audio
 
 def str2seconds(time_str: str) -> float:
     """Convert a time string to seconds."""
@@ -27,3 +29,27 @@ def download_from_colab(filepath: str):
     if str(get_ipython()).startswith("<google.colab."):
         from google.colab import files
         files.download(filepath)
+
+def get_speech_timestamps(
+        audio,
+        model=None,
+        min_silence_duration_ms=2000,
+        return_seconds=True,
+    ):
+
+    wav = load_audio(audio, data_type='torch')
+    wav = wav.squeeze(0)
+
+    if model is None:
+        model = silero_vad.load_silero_vad(onnx=True)
+    speech_timestamps = silero_vad.get_speech_timestamps(
+        audio=wav,
+        model=model,
+        min_silence_duration_ms=min_silence_duration_ms,
+        return_seconds=return_seconds,
+    )
+
+    wav.detach()
+    del model, wav
+    gc.collect()
+    return speech_timestamps

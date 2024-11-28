@@ -14,7 +14,8 @@ dependencies =  [
     "numpy>=1",
     "pandas>=2",
     "pyannote.audio>=3",
-    "torch>=2.1.1 ",
+    "torch>=2.1.1",
+    "silero_vad",
 ]
 
 [tool.setuptools.packages.find]

@@ -6,7 +6,7 @@ from typing import Union, Optional, Iterable, TextIO, BinaryIO, List, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from IPython.display import display
 import ipywidgets as widgets
-from .audio import open_stream
+from .audio import open_live_stream
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 logger = getLogger(__name__)
@@ -79,7 +79,7 @@ def realtime_transcribe(
     segments = []
     if model is None:
         model = FasterWhisperModel("large-v3-turbo")
-    process = open_stream(url)
+    process = open_live_stream(url)
     buffer = b""
     fh1 = open(
         datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".txt",

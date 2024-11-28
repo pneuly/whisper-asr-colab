@@ -6,12 +6,12 @@ from torch.cuda import empty_cache
 from numpy import ndarray
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Union, Iterable
+from typing import Optional, Union, Iterable, List
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
 from .audio import dl_audio, trim_audio, load_audio
-from .utils import download_from_colab
+from .utils import download_from_colab, get_speech_timestamps
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
 from .speakersegment import SpeakerSegmentList
@@ -34,6 +34,7 @@ class Worker:
     batch_size: int = 16
     prefix: Optional[str] = None
     vad_filter: bool = True
+    clip_timestamps: Optional[List[dict]] = [],
     log_progress: bool = False
 
     # other options
@@ -79,6 +80,14 @@ class Worker:
             start_time: Optional[Union[int, float]] = None,
             end_time: Optional[Union[int, float]] = None
         )->SpeakerSegmentList:
+
+        # VAD in faster-whisper consumes too much memory
+        # So, perform VAD directly using Silero VAD
+        print("Detecting voice acitivity (VAD) ...")
+        active_segments = get_speech_timestamps(self.input_audio)
+        clip_timestamps = [value for ts in active_segments for value in ts.values()]
+        print(clip_timestamps)
+
         # Transcribe
         if self.model is None:
             self.model = FasterWhisperModel(
@@ -86,7 +95,8 @@ class Worker:
                     device=self.device,
                     compute_type="default",
                 )
-        if self.realtime: # realtime trascription
+        # realtime trascription
+        if self.realtime:
             segments = realtime_transcribe(
                 url = self.audio,
                 model=self.model,
@@ -95,7 +105,9 @@ class Worker:
             )
             empty_cache()
             #sys.exit(0)
-        else:  # use faster-whisper
+
+        # use faster-whisper
+        else:
             audio = load_audio(
                         self.input_audio,
                         start_time=start_time,
@@ -110,7 +122,7 @@ class Worker:
                     hotwords = self.hotwords,
                     prefix = self.prefix,
                     vad_filter=self.vad_filter,
-                    #chunk_length=self.chunk_length,
+                    clip_timestamps=clip_timestamps,
                     batch_size=self.batch_size,
                 )
             del audio
