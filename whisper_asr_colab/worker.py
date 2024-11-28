@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
 from .audio import dl_audio, trim_audio, load_audio
-from .utils import download_from_colab, get_speech_timestamps
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
 from .speakersegment import SpeakerSegmentList
@@ -25,7 +24,7 @@ class Worker:
     model: Optional[FasterWhisperModel] = None
 
     # transcribe options
-    audio: Union[str, ndarray] = "" # original audio path or data
+    audio: str = "" # original audio path or data:
     language: Optional[str] = None
     multilingual: bool = False
     initial_prompt: Optional[Union[str, Iterable[int]]] = None
@@ -34,7 +33,7 @@ class Worker:
     batch_size: int = 16
     prefix: Optional[str] = None
     vad_filter: bool = True
-    clip_timestamps: Optional[List[dict]] = [],
+    clip_timestamps: Optional[List[dict]] = None,
     log_progress: bool = False
 
     # other options
@@ -83,10 +82,10 @@ class Worker:
 
         # VAD in faster-whisper consumes too much memory
         # So, perform VAD directly using Silero VAD
-        print("Detecting voice acitivity (VAD) ...")
-        active_segments = get_speech_timestamps(self.input_audio)
-        clip_timestamps = [value for ts in active_segments for value in ts.values()]
-        print(clip_timestamps)
+        #print("Detecting voice acitivity (VAD) ...")
+        #active_segments = get_speech_timestamps(self.input_audio)
+        #clip_timestamps = [value for ts in active_segments for value in ts.values()]
+        #print(clip_timestamps)
 
         # Transcribe
         if self.model is None:
@@ -111,7 +110,8 @@ class Worker:
             audio = load_audio(
                         self.input_audio,
                         start_time=start_time,
-                        end_time=end_time
+                        end_time=end_time,
+                        data_type="numpy",
                     )
             segments, _ = faster_whisper_transcribe(
                     audio=audio,
@@ -122,7 +122,7 @@ class Worker:
                     hotwords = self.hotwords,
                     prefix = self.prefix,
                     vad_filter=self.vad_filter,
-                    clip_timestamps=clip_timestamps,
+                    #clip_timestamps=clip_timestamps,
                     batch_size=self.batch_size,
                 )
             del audio

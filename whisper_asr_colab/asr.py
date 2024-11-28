@@ -25,7 +25,7 @@ def faster_whisper_transcribe(
     batch_size: int = 16,
     prefix: Optional[str] = None,
     vad_filter: bool = True,
-    clip_timestamps: Optional[List[dict]] = [],
+    clip_timestamps: Optional[List[dict]] = None,
     log_progress: bool = False,
     ) -> tuple[SpeakerSegmentList, Any]:
 
@@ -56,7 +56,7 @@ def faster_whisper_transcribe(
             language=language,
             multilingual=multilingual,
             vad_filter=vad_filter,
-            clip_timestamps=clip_timestamps,
+            #clip_timestamps=clip_timestamps,
             initial_prompt=initial_prompt,
             hotwords=hotwords,
             prefix=prefix,

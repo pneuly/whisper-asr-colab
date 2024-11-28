@@ -6,7 +6,7 @@ import ffmpeg
 import torchaudio
 from io import BytesIO
 from typing import Union, Optional
-from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
+from numpy import frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 
 
 def dl_audio(url: str, password: str = ""):
@@ -47,7 +47,7 @@ def trim_audio(
 def read_audio(
         file: str,
         sr: int = 16000,
-        format: str = "s16le", # output format
+        format: str = "wav", # output format
         start_time: Optional[Union[int, float, str]] = None,
         end_time: Optional[Union[int, float, str]] = None
 ):
@@ -97,9 +97,14 @@ def load_audio(
         sr: int = 16000,
         start_time: Optional[Union[int, float, str]] = None,
         end_time: Optional[Union[int, float, str]] = None,
-        data_type: str = "numpy" #torch or numpy
+        data_type: str = "file-like"
     ):
-    format = "s16le" if (data_type == "numpy") else "wav"
+    if data_type == "numpy":
+        format = "s16le"
+    elif data_type == "numpy" or "file-like":
+        format = "wav"
+    else:
+        raise ValueError("data_type has to be 'numpy', 'torch', or 'file-like'")
     stream = read_audio(
         file=file,
         sr=sr,
@@ -111,10 +116,10 @@ def load_audio(
         return np_frombuffer(stream, np_int16).flatten().astype(np_float32) / 32768.0
     elif data_type == "torch":
         out, sr = torchaudio.load(stream, format=format)
-        print(sr)
+        print(f"sampling rate: {sr}")
         return out
-    else:
-        raise ValueError("data_type has to be 'numpy' or 'torch'")
+    elif data_type == "file-like":
+        return BytesIO(stream)
 
 
 def subprocess_progress(cmd: list):
