@@ -8,7 +8,6 @@ The main functions of this package are as follows:
 * **Speech-to-text (transcription)**, powered by [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 * **Diarization**, powered by [pyannote-audio](https://github.com/pyannote/pyannote-audio)
 * **Online audio downloading**, powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-* **Memory efficient audio loading during transcription**, ported from [WhisperX](https://github.com/m-bain/whisperX)
 * **Writing diarization results in docx format**, powered by [python-docx](https://github.com/python-openxml/python-docx)
 
 ## Usage
@@ -17,7 +16,7 @@ Open [whisper_asr_colab.ipynb](https://github.com/pneuly/whisper-asr-colab/blob/
 from whisper_asr_colab.worker import Worker
 
 audio = "audiofile.m4a"
-model_size = "medium"
+model_size = "turbo"
 hf_token = "your hf token"
 
 worker = Worker(

@@ -8,7 +8,6 @@
 * **文字起こし**：[faster-whisper](https://github.com/SYSTRAN/faster-whisper) を使用
 * **話者分離**：[pyannote-audio](https://github.com/pyannote/pyannote-audio) を使用
 * **音声のダウンロード**：[yt-dlp](https://github.com/yt-dlp/yt-dlp) を使用
-* **文字起こし時の音声ファイル読み込みの省メモリ化**：[WhisperX](https://github.com/m-bain/whisperX) から移植
 * **話者分離結果をdocx形式で書き出し**：[python-docx](https://github.com/python-openxml/python-docx) を使用
 
 ## 使用例
@@ -17,7 +16,7 @@ Google Colab 上での実装例は、[whisper_asr_colab.ipynb](https://github.co
 from whisper_asr_colab.worker import Worker
 
 audio = "audiofile.m4a"
-model_size = "medium"
+model_size = "turbo"
 hf_token = "your hf token"
 
 worker = Worker(
