@@ -1,11 +1,11 @@
 import logging
 from torch.cuda import is_available as cuda_is_available
-from torch import device as torch_device, from_numpy as torch_from_numpy
-from numpy import ndarray
-from typing import Union, Optional
+from torch import device as torch_device
+from typing import Union, Optional, BinaryIO
+from io import BytesIO
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from .audio import load_audio
+from .audio import read_audio
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 class DiarizationPipeline:
@@ -25,16 +25,19 @@ class DiarizationPipeline:
 
     def __call__(
             self,
-            audio: Union[str, ndarray],
+            audio: Union[str, BinaryIO],
             min_duration_on=1.5,  # remove speech regions shorter than this seconds.
             min_duration_off=1.5,  # fill non-speech regions shorter than this seconds.
             ) -> SpeakerSegmentList:
-        _audio = audio if isinstance(audio, ndarray) else load_audio(audio) 
-        audio_data = {
-            'waveform': torch_from_numpy(_audio[None, :]),
-            'sample_rate': 16000
-        }
-        del _audio
+        if isinstance(audio, str):
+            audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
+        else:
+            audio_data = {'uri': 'audio_stream', 'audio': audio}
+        #if isinstance(audio, ndarray):
+        #    audio_data = {'uri': 'audio_uri', 'audio': audio, 'sample_rate': 16000}
+        #else:
+        #    audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
+
         self.pipeline.min_duration_on = min_duration_on
         self.pipeline.min_duration_off = min_duration_off
         speaker_segments = SpeakerSegmentList()
@@ -48,7 +51,6 @@ class DiarizationPipeline:
                         speaker=speaker
                     )
                 )
-        del audio_data
         #    speaker_segments = SpeakerSegmentList(*[
         #        SpeakerSegment(
         #            start=time_segment.start,
@@ -61,7 +63,7 @@ class DiarizationPipeline:
 
 
 def diarize(
-        audio: Union[str, ndarray],
+        audio: Union[str, BinaryIO],
         hugging_face_token: str,
     ) -> SpeakerSegmentList:
 

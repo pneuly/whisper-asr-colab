@@ -4,7 +4,6 @@ import time
 import subprocess
 import ffmpeg
 from typing import Union, Optional
-from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 from .utils import sanitize_filename
 
 def dl_audio(url: str, password: str = ""):
@@ -44,52 +43,50 @@ def trim_audio(
             )
     return input_path
 
-def load_audio(
+
+def read_audio(
         file: str,
         sr: int = 16000,
+        format: str = "wav", # output format
         start_time: Optional[Union[int, float, str]] = None,
         end_time: Optional[Union[int, float, str]] = None
-    ) -> ndarray:
+    ) -> subprocess.Popen:
+    """Read audio file with resampling and time duration
+    Args:
+        file (str): Audio file path
+        sr (int, optional): Sampling rate. Defaults to 16000.
+        format (str, optional): Output format. Defaults to "wav".
+        start_time (Optional[Union[int, float, str]], optional): Audio start time. Defaults to None.
+        end_time (Optional[Union[int, float, str]], optional): Audio end time. Defaults to None.
+    Returns:
+        subprocess.Popen
+    """
     try:
         cmd = [
             "ffmpeg",
             "-nostdin",
             "-threads", "0",
             "-i", file,
-            "-f", "s16le",
+            "-f", format,
             "-ac", "1",
             "-acodec", "pcm_s16le",
             "-ar", str(sr),
+            #"-loglevel", "quiet",
         ]
         if start_time:
             cmd.extend(["-ss", str(start_time)])
         if end_time:
             cmd.extend(["-to", str(end_time)])
         cmd.append("-")
-        out = subprocess.run(cmd, capture_output=True, check=True).stdout
+        return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-    return np_frombuffer(out, np_int16).flatten().astype(np_float32) / 32768.0
 
 
 def open_stream(url: str) -> subprocess.Popen:
     command = ["yt-dlp", "-g", url, "-x", "-S", "+acodec:mp4a"]
     audio_url = subprocess.check_output(command).decode("utf-8").strip()
-    return subprocess.Popen(
-        [
-            "ffmpeg",
-            "-i", audio_url,
-            "-vn",
-            "-f", "s16le",
-            "-acodec", "pcm_s16le",
-            "-ac", "1",
-            "-ar", "16000",
-            "-",
-            "-loglevel", "quiet"
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
+    return read_audio(file=audio_url)
 
 
 def get_silence_duration(audio_file) -> float:

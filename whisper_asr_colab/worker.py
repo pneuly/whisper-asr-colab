@@ -3,14 +3,13 @@ import re
 import time
 import gc
 from torch.cuda import empty_cache
-from numpy import ndarray
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Union, Iterable
+from typing import Optional, Union, Iterable, BinaryIO
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
-from .audio import dl_audio, trim_audio, load_audio, get_silence_duration
+from .audio import dl_audio, trim_audio, read_audio, get_silence_duration
 from .utils import download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
@@ -25,7 +24,7 @@ class Worker:
     model: Optional[FasterWhisperModel] = None
 
     # transcribe options
-    audio: Union[str, ndarray] = "" # original audio path or data
+    audio: Union[str, BinaryIO] = "" # original audio path or data
     language: Optional[str] = None
     multilingual: bool = False
     initial_prompt: Optional[Union[str, Iterable[int]]] = None
@@ -50,10 +49,10 @@ class Worker:
     asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
     diarized_segments: Optional[SpeakerSegmentList] = None  # result from pyannote
 
-    _input_audio: Union[str, ndarray] = "" # audio input to pass to whisper
+    _input_audio: Union[str, BinaryIO] = "" # audio input to pass to whisper
 
     @property
-    def input_audio(self) -> Union[str, ndarray]:
+    def input_audio(self) -> Union[str, BinaryIO]:
         return self._input_audio
 
     def __post_init__(self):
@@ -147,11 +146,11 @@ class Worker:
             self,
             start_time: Optional[Union[int, float]] = None,
             end_time: Optional[Union[int, float]] = None):
-        audio = load_audio(
+        audio = read_audio(
                     self.input_audio,
                     start_time=start_time,
                     end_time=end_time
-                )
+                ).stdout
         segments, _ = faster_whisper_transcribe(
                 audio=audio,
                 model=self.model,

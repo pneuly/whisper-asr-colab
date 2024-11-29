@@ -1,7 +1,6 @@
 import time
 import datetime
 from logging import getLogger
-from numpy import ndarray, frombuffer as np_frombuffer, int16 as np_int16, float32 as np_float32
 from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from IPython.display import display
@@ -16,7 +15,7 @@ def faster_whisper_transcribe(
     model: Optional[FasterWhisperModel] = None,
 
     # transcribe options
-    audio: Union[str, BinaryIO, ndarray] = "",
+    audio: Union[str, BinaryIO] = "",
     language: Optional[str] = None,
     multilingual: bool = False,
     initial_prompt: Optional[Union[str, Iterable[int]]] = None,
@@ -105,7 +104,8 @@ def realtime_transcribe(
         initial_prompt: Optional[str] = None
         ) -> SpeakerSegmentList:
         segments, _ =  model.transcribe(
-            audio=np_frombuffer(data, np_int16).astype(np_float32) / 32768.0,
+            #audio=np_frombuffer(data, np_int16).astype(np_float32) / 32768.0,
+            audio=data,
             language=language,
             initial_prompt=initial_prompt
             )
