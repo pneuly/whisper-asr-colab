@@ -1,16 +1,21 @@
-from datetime import datetime
 import re
 
 def str2seconds(time_str: str) -> float:
-    """Convert a time string to seconds."""
-    for fmt in ("%H:%M:%S", "%M:%S", "%S", "%H:%M:%S.%f", "%M:%S.%f", "%S.%f"):
-        try:
-            return (
-                datetime.strptime(time_str, fmt) - datetime(1900, 1, 1)
-                ).total_seconds()
-        except ValueError:
-            pass
-    raise ValueError(f"Error: Unable to parse time string '{time_str}'")
+    """Convert a time string (hh:mm:ss) to seconds."""
+    #for fmt in ("%H:%M:%S", "%M:%S", "%S", "%H:%M:%S.%f", "%M:%S.%f", "%S.%f"):
+    #   try:
+    #       return (
+    #            datetime.strptime(time_str, fmt) - datetime(1900, 1, 1)
+    #            ).total_seconds()
+    #    except ValueError:
+    #        pass
+    #raise ValueError(f"Error: Unable to parse time string '{time_str}'")
+    if not time_str:
+        return 0.0
+    parts = time_str.split(':')
+    return sum(
+        float(x) * 60 ** i for i, x
+        in enumerate(parts[::-1]))
 
 
 def format_timestamp(seconds: float) -> str:

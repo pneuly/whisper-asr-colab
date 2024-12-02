@@ -2,15 +2,16 @@ import os
 import re
 import time
 import gc
+from io import BytesIO
 from torch.cuda import empty_cache
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Union, Iterable, BinaryIO
+from typing import Optional, Union, Iterable, BinaryIO, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
-from .audio import dl_audio, trim_audio, read_audio, get_silence_duration
-from .utils import download_from_colab
+from .audio import dl_audio, read_audio, get_silence_duration
+from .utils import str2seconds, download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
 from .speakersegment import SpeakerSegmentList
@@ -32,18 +33,18 @@ class Worker:
     chunk_length: int = 30
     batch_size: int = 16
     prefix: Optional[str] = None
-    vad_filter: bool = True
+    vad_filter: bool = False
     log_progress: bool = False
 
     # other options
     diarization: bool = True
     hugging_face_token: str = ""
     password: str = ""
-    start_time: str = ""
-    end_time: str = ""
-    timestamp_offset: str = ""
+    start_time: float = 0.0
+    end_time: float = 0.0
+    timestamp_offset: float = 0.0
     realtime: bool = False
-    trim_silence: bool = True  # If True, trim leading silence from the audio
+    skip_silence: bool = True  # If True, skip the leading silence of the audio
 
     #result data
     asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
@@ -56,8 +57,11 @@ class Worker:
         return self._input_audio
 
     def __post_init__(self):
-        # download and trim audio if needed
+        # download audio if needed
         if self.audio and not self.realtime:
+            self.start_time = str2seconds(self.start_time)
+            self.end_time = str2seconds(self.end_time)
+            self.timestamp_offset = str2seconds(self.timestamp_offset)
             self._input_audio = self.audio
             if re.match(r"^(https://).+", self.audio):
                 self._input_audio = dl_audio(self.audio, self.password)
@@ -70,22 +74,21 @@ class Worker:
                     if (filesize2 - filesize) > 0:
                         # File uploading seems incomplete
                         raise IOError("Upload seems incomplete. Run again after the upload is finished.")
-            if self.start_time or self.end_time: # trim if specified
-                print("Trimming the audio file.")
-                self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
-            elif self.trim_silence:
+            #if self.start_time or self.end_time: # trim if specified
+            #    print("Trimming the audio file.")
+            #    self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
+            if self.skip_silence and not self.start_time:
                 sec = get_silence_duration(self._input_audio)
                 if sec > 0.0:
-                    print("Trimming leading silent part.")
-                    self._input_audio = trim_audio(self._input_audio, sec)
+                    print(f"Leading silence detected. Skipping {sec} seconds.")
                     self.start_time = sec
 
 
-    def transcribe(
-            self,
-            start_time: Optional[Union[int, float]] = None,
-            end_time: Optional[Union[int, float]] = None
-        )->SpeakerSegmentList:
+    def transcribe(self) -> SpeakerSegmentList:
+        """Wrapper for faster-whisper transcription.
+        Automatically sets the inference if not explicitly specified.
+        Switches between normal transcription and real-time transcription based on the value of `self.realtime`.
+        """
         # Transcribe
         if self.model is None:
             self.model = FasterWhisperModel(
@@ -94,21 +97,24 @@ class Worker:
                     compute_type="default",
                 )
         if self.realtime: # realtime trascription
+            print("Transcribing on the fly...")
             segments = realtime_transcribe(
                 url = self.audio,
                 model=self.model,
                 language = self.language,
                 initial_prompt = self.initial_prompt
             )
-            empty_cache()
-            #sys.exit(0)
-        else:  # use faster-whisper
-            segments, _ = self.call_faster_whisper_transcribe(start_time, end_time)
+        else:  # normal transcription
+            print(f"Transcribing from {self.start_time if self.start_time else ''}...")
+            segments, _ = self.call_faster_whisper_transcribe(
+                                                    self.start_time,
+                                                    self.end_time)
         return segments
 
 
-    def transcribe_segmented(self)->SpeakerSegmentList:
-        """Transcribe each diarized segment separately"""
+    def transcribe_segmented(self) -> SpeakerSegmentList:
+        """Transcribe each diarized segment separately. Called by run2()"""
+        print("Transcribing each segment...")
         if self.model is None:
             self.model = FasterWhisperModel(
                     self.model_size,
@@ -145,7 +151,9 @@ class Worker:
     def call_faster_whisper_transcribe(
             self,
             start_time: Optional[Union[int, float]] = None,
-            end_time: Optional[Union[int, float]] = None):
+            end_time: Optional[Union[int, float]] = None) -> Tuple[SpeakerSegmentList, Any]:
+        """Commonly used by `transcribe()` and `transcribe_segmented().`
+        """
         audio = read_audio(
                     self.input_audio,
                     start_time=start_time,
@@ -171,10 +179,21 @@ class Worker:
 
 
     def diarize(self):
-        return _diarize(
-            audio=self.input_audio,
+        print("Diarizing...")
+        ## pyannote.audio cannot handle stdout file-like object correctry. So, pass the audio as BytesIO.
+        audio = BytesIO(read_audio(
+                    self.input_audio,
+                    start_time=self.start_time,
+                    end_time=self.end_time
+                ).stdout.read())
+        segments = _diarize(
+            audio=audio,
             hugging_face_token=self.hugging_face_token,
         )
+        if segments and self.start_time:
+            for item in segments:
+                item.shift_time(self.start_time)
+        return segments
 
     def _write_result(self, speaker_segments, with_speakers=False):
         if isinstance(self.input_audio, str):
@@ -188,26 +207,30 @@ class Worker:
         )
 
     def run(self):
-        """ASR first and diarize"""
+        """Wrapper for ASR and diarization"""
         files_to_download = []
-        print("Transcribing...")
+
         self.asr_segments = self.transcribe()
+
         print("Writing result...")
         outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
+
         del self.model
         empty_cache()
         gc.collect()
 
-        print("Diarizing...")
         if self.diarization:
             self.diarized_segments = self.diarize()
-            print("Writing result...")
             self.diarized_segments = self.asr_segments.assign_speakers(
                 diarization_result=self.diarized_segments
             )
+
+            print("Writing result...")
             diarized_txt = self._write_result(self.diarized_segments, with_speakers=True)[0]
+
             files_to_download.append(diarized_txt)
+
             empty_cache()
 
             print("Writing to docx...")
@@ -224,12 +247,10 @@ class Worker:
 
 
     def run2(self):
-        """Diarize first, and ASR for each diarized segment"""
+        """Similar to run(), but diarize first and ASR for each diarized segment"""
         files_to_download = []
-        print("Diarizing...")
-        self.diarized_segments = self.diarize()
 
-        print("Transcribing...")
+        self.diarized_segments = self.diarize()
         self.asr_segments = self.transcribe_segmented()
 
         print("Writing asr result...")

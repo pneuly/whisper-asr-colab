@@ -23,7 +23,7 @@ def faster_whisper_transcribe(
     chunk_length: int = 30,
     batch_size: int = 16,
     prefix: Optional[str] = None,
-    vad_filter: bool = True,
+    vad_filter: bool = False,
     log_progress: bool = False,
     ) -> tuple[SpeakerSegmentList, Any]:
 
@@ -118,7 +118,7 @@ def realtime_transcribe(
     while not stop_transcribing:
         audio_data = process.stdout.read(16000 * 2)
         if process.poll() is not None:
-            segments += _realtime_asr_loop(model, buffer, fh1)
+            segments += _realtime_asr_loop(model, buffer, fh1, initial_prompt)
             break
 
         buffer += audio_data
