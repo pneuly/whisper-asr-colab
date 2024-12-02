@@ -1,16 +1,12 @@
-import os
-import re
-import time
 import gc
-from io import BytesIO
 from torch.cuda import empty_cache
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Union, Iterable, BinaryIO, Tuple, Any
+from typing import Optional, Union, Iterable, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
-from .audio import dl_audio, read_audio, get_silence_duration
+from .audio import Audio
 from .utils import str2seconds, download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
@@ -19,13 +15,13 @@ from .speakersegment import SpeakerSegmentList
 
 @dataclass
 class Worker:
-    # model options
+    # core parameters
+    audio: Union[Audio, str]
     model_size: str = "large-v3-turbo"
     device: str = "auto"
-    model: Optional[FasterWhisperModel] = None
 
     # transcribe options
-    audio: Union[str, BinaryIO] = "" # original audio path or data
+    model: Optional[FasterWhisperModel] = None
     language: Optional[str] = None
     multilingual: bool = False
     initial_prompt: Optional[Union[str, Iterable[int]]] = None
@@ -40,8 +36,8 @@ class Worker:
     diarization: bool = True
     hugging_face_token: str = ""
     password: str = ""
-    start_time: float = 0.0
-    end_time: float = 0.0
+#    start_time: float = 0.0
+#    end_time: float = 0.0
     timestamp_offset: float = 0.0
     realtime: bool = False
     skip_silence: bool = True  # If True, skip the leading silence of the audio
@@ -50,39 +46,27 @@ class Worker:
     asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
     diarized_segments: Optional[SpeakerSegmentList] = None  # result from pyannote
 
-    _input_audio: Union[str, BinaryIO] = "" # audio input to pass to whisper
-
-    @property
-    def input_audio(self) -> Union[str, BinaryIO]:
-        return self._input_audio
 
     def __post_init__(self):
-        # download audio if needed
-        if self.audio and not self.realtime:
-            self.start_time = str2seconds(self.start_time)
-            self.end_time = str2seconds(self.end_time)
+        if isinstance(self.audio, str):
+            self.audio = Audio.from_path_or_url(self.audio)
+        if self.password:
+            self.audo.password = self.password
+        if self.realtime:
+            print("`skip_silence` is disabled since `realtime` mode is enabled.")
+            self.skip_silence = False
+        if self.timestamp_offset:
             self.timestamp_offset = str2seconds(self.timestamp_offset)
-            self._input_audio = self.audio
-            if re.match(r"^(https://).+", self.audio):
-                self._input_audio = dl_audio(self.audio, self.password)
-            else:
-                # If the file size is small, check for incomplete upload.
-                filesize = os.path.getsize(self.audio)
-                if filesize < 10 ** 7:  # less than 10MB
-                    time.sleep(10)
-                    filesize2 = os.path.getsize(self.audio)
-                    if (filesize2 - filesize) > 0:
-                        # File uploading seems incomplete
-                        raise IOError("Upload seems incomplete. Run again after the upload is finished.")
-            #if self.start_time or self.end_time: # trim if specified
-            #    print("Trimming the audio file.")
-            #    self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
-            if self.skip_silence and not self.start_time:
-                sec = get_silence_duration(self._input_audio)
-                if sec > 0.0:
-                    print(f"Leading silence detected. Skipping {sec} seconds.")
-                    self.start_time = sec
+        if self.skip_silence:
+            self.audio.set_silence_skip()
 
+#    def get_audio_slice(self,
+#                         start_time: Optional[Union[int, float]] = None,
+#                         end_time: Optional[Union[int, float]] = None):
+#        sr = self.model.feature_extractor.sampling_rate if self.model else 16000
+#        i_start = 0 if not start_time else int(start_time * sr)
+#        i_end = len(self._audio_data) if not end_time else int(end_time * sr)
+#        return self._audio_data[i_start:i_end]
 
     def transcribe(self) -> SpeakerSegmentList:
         """Wrapper for faster-whisper transcription.
@@ -99,16 +83,14 @@ class Worker:
         if self.realtime: # realtime trascription
             print("Transcribing on the fly...")
             segments = realtime_transcribe(
-                url = self.audio,
+                process=self.audio.live_stream,
                 model=self.model,
                 language = self.language,
                 initial_prompt = self.initial_prompt
             )
         else:  # normal transcription
-            print(f"Transcribing from {self.start_time if self.start_time else ''}...")
-            segments, _ = self.call_faster_whisper_transcribe(
-                                                    self.start_time,
-                                                    self.end_time)
+            print(f"Transcribing from {self.audio.start_time if self.audio.start_time else 'start'}")
+            segments, _ = self.call_faster_whisper_transcribe()
         return segments
 
 
@@ -148,19 +130,11 @@ class Worker:
         return asr_result
 
 
-    def call_faster_whisper_transcribe(
-            self,
-            start_time: Optional[Union[int, float]] = None,
-            end_time: Optional[Union[int, float]] = None) -> Tuple[SpeakerSegmentList, Any]:
+    def call_faster_whisper_transcribe(self) -> Tuple[SpeakerSegmentList, Any]:
         """Commonly used by `transcribe()` and `transcribe_segmented().`
         """
-        audio = read_audio(
-                    self.input_audio,
-                    start_time=start_time,
-                    end_time=end_time
-                ).stdout
         segments, _ = faster_whisper_transcribe(
-                audio=audio,
+                audio=self.audio.ndarray,
                 model=self.model,
                 language = self.language,
                 multilingual=self.multilingual,
@@ -171,7 +145,7 @@ class Worker:
                 #chunk_length=self.chunk_length,
                 batch_size=self.batch_size,
             )
-        del audio
+        start_time = self.audio.start_time
         if segments and start_time:
             for item in segments:
                 item.shift_time(start_time)
@@ -180,24 +154,18 @@ class Worker:
 
     def diarize(self):
         print("Diarizing...")
-        ## pyannote.audio cannot handle stdout file-like object correctry. So, pass the audio as BytesIO.
-        audio = BytesIO(read_audio(
-                    self.input_audio,
-                    start_time=self.start_time,
-                    end_time=self.end_time
-                ).stdout.read())
         segments = _diarize(
-            audio=audio,
+            audio=self.audio.ndarray,
             hugging_face_token=self.hugging_face_token,
         )
-        if segments and self.start_time:
+        if segments and self.audio.start_time:
             for item in segments:
-                item.shift_time(self.start_time)
+                item.shift_time(self.audio.start_time)
         return segments
 
     def _write_result(self, speaker_segments, with_speakers=False):
-        if isinstance(self.input_audio, str):
-            outfilename = self.input_audio
+        if isinstance(self.audio.file_path, str):
+            outfilename = self.audio.file_path
         else:
             outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
         return speaker_segments.write_result(
@@ -209,9 +177,7 @@ class Worker:
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
-
         self.asr_segments = self.transcribe()
-
         print("Writing result...")
         outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
@@ -236,10 +202,11 @@ class Worker:
             print("Writing to docx...")
             doc = DocxGenerator()
             doc.txt_to_word(diarized_txt)
+            print(f"Downloading {doc.docfilename}")
             download_from_colab(doc.docfilename)
         # DL audio file
-        if not self.audio == self.input_audio:
-            files_to_download.append(self.input_audio)
+        if self.audio.url:
+            files_to_download.append(self.audio.file_path)
 
         for file in files_to_download:
             print(f"Downloading {file}")
@@ -266,11 +233,12 @@ class Worker:
         print("Writing to docx...")
         doc = DocxGenerator()
         doc.txt_to_word(diarized_txt)
+        print(f"Downloading {doc.docfilename}")
         download_from_colab(doc.docfilename)
 
         # DL audio file
-        if not self.audio == self.input_audio:
-            files_to_download.append(self.input_audio)
+        if not self.audio.url:
+            files_to_download.append(self.audio.file_path)
 
         for file in files_to_download:
             print(f"Downloading {file}")

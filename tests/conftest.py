@@ -1,5 +1,6 @@
 import os
 import pytest
+from whisper_asr_colab.audio import Audio
 
 @pytest.fixture
 def data_dir() -> str:
@@ -7,7 +8,8 @@ def data_dir() -> str:
 
 @pytest.fixture
 def audio(data_dir) -> str:
-    return os.path.join(data_dir, "asr_test.m4a")
+    audio = Audio(file_path=os.path.join(data_dir, "asr_test.m4a"))
+    return audio.ndarray
 
 @pytest.fixture
 def asr_segments_file(data_dir) -> str:

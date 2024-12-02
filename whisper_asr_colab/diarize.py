@@ -1,11 +1,10 @@
 import logging
 from torch.cuda import is_available as cuda_is_available
-from torch import device as torch_device
+from torch import device as torch_device, from_numpy
 from typing import Union, Optional, BinaryIO
-from io import BytesIO
+from numpy import ndarray
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from .audio import read_audio
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 class DiarizationPipeline:
@@ -25,18 +24,16 @@ class DiarizationPipeline:
 
     def __call__(
             self,
-            audio: Union[str, BinaryIO],
+            audio: Union[str, ndarray, BinaryIO],
             min_duration_on=1.5,  # remove speech regions shorter than this seconds.
             min_duration_off=1.5,  # fill non-speech regions shorter than this seconds.
             ) -> SpeakerSegmentList:
-        if isinstance(audio, str):
-            audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
+        if isinstance(audio, ndarray):
+            audio_data = {"waveform": from_numpy(audio[None, :]), "sample_rate": 16000}
+        #elif isinstance(audio, str):
+        #    audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
         else:
             audio_data = {'uri': 'audio_stream', 'audio': audio}
-        #if isinstance(audio, ndarray):
-        #    audio_data = {'uri': 'audio_uri', 'audio': audio, 'sample_rate': 16000}
-        #else:
-        #    audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
 
         self.pipeline.min_duration_on = min_duration_on
         self.pipeline.min_duration_off = min_duration_off
@@ -51,14 +48,6 @@ class DiarizationPipeline:
                         speaker=speaker
                     )
                 )
-        #    speaker_segments = SpeakerSegmentList(*[
-        #        SpeakerSegment(
-        #            start=time_segment.start,
-        #            end=time_segment.end,
-        #            speaker=speaker
-        #        ) for time_segment, _, speaker in self.pipeline(
-        #            audio_data, hook=hook,).itertracks(yield_label=True)
-        #    ])
         return speaker_segments
 
 
