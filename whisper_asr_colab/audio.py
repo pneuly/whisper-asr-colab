@@ -3,6 +3,7 @@ import os
 import time
 import subprocess
 import ffmpeg
+import numpy as np
 from typing import Union, Optional
 from .utils import sanitize_filename
 
@@ -111,6 +112,24 @@ def get_silence_duration(audio_file) -> float:
         silence_duration = float(result[1].split()[-1])
     return silence_duration
 
+
+def trim_silence(audio_data: np.ndarray, threshold=0.01, sample_rate=16000):
+    """Experimental
+    Trim leading and trailing silence in audio data.
+    Returns:
+        tuple: (trimmed_audio, start_index, end_index) indicating the non-silent section.
+    """
+    audio_data = np.abs(audio_data)
+    non_silent_indices = np.where(audio_data > threshold)[0]
+    if len(non_silent_indices) == 0:
+        print("Entire signal is silent!")
+        return 0, 0, np.array([])
+    leading_silence_end = non_silent_indices[0]
+    trailing_silence_start = non_silent_indices[-1]
+    return (leading_silence_end / sample_rate,
+            trailing_silence_start / sample_rate,
+            audio_data[leading_silence_end:trailing_silence_start+1]
+    )
 
 def subprocess_progress(cmd: list):
     p = subprocess.Popen(

@@ -2,15 +2,15 @@ import os
 import re
 import time
 import gc
-from io import BytesIO
+from numpy import ndarray
 from torch.cuda import empty_cache
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Union, Iterable, BinaryIO, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
-from faster_whisper import WhisperModel as FasterWhisperModel
+from faster_whisper import WhisperModel as FasterWhisperModel, decode_audio
 from .docx_generator import DocxGenerator
-from .audio import dl_audio, read_audio, get_silence_duration
+from .audio import dl_audio, get_silence_duration, trim_silence
 from .utils import str2seconds, download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
@@ -25,7 +25,7 @@ class Worker:
     model: Optional[FasterWhisperModel] = None
 
     # transcribe options
-    audio: Union[str, BinaryIO] = "" # original audio path or data
+    audio: str = "" # original audio file path or url
     language: Optional[str] = None
     multilingual: bool = False
     initial_prompt: Optional[Union[str, Iterable[int]]] = None
@@ -50,11 +50,12 @@ class Worker:
     asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
     diarized_segments: Optional[SpeakerSegmentList] = None  # result from pyannote
 
-    _input_audio: Union[str, BinaryIO] = "" # audio input to pass to whisper
+    _audio_file_path: Optional[str] = None
+    _audio_data: Optional[ndarray] = None  # audio data to pass to whisper and pyannote
 
     @property
-    def input_audio(self) -> Union[str, BinaryIO]:
-        return self._input_audio
+    def audio_file_path(self) -> Union[str, BinaryIO]:
+        return self._audio_file_path
 
     def __post_init__(self):
         # download audio if needed
@@ -62,27 +63,43 @@ class Worker:
             self.start_time = str2seconds(self.start_time)
             self.end_time = str2seconds(self.end_time)
             self.timestamp_offset = str2seconds(self.timestamp_offset)
-            self._input_audio = self.audio
+            self._audio_file_path = self.audio
             if re.match(r"^(https://).+", self.audio):
-                self._input_audio = dl_audio(self.audio, self.password)
+                self._audio_file_path = dl_audio(self.audio, self.password)
             else:
                 # If the file size is small, check for incomplete upload.
-                filesize = os.path.getsize(self.audio)
+                filesize = os.path.getsize(self._audio_file_path)
                 if filesize < 10 ** 7:  # less than 10MB
                     time.sleep(10)
-                    filesize2 = os.path.getsize(self.audio)
+                    filesize2 = os.path.getsize(self._audio_file_path)
                     if (filesize2 - filesize) > 0:
                         # File uploading seems incomplete
                         raise IOError("Upload seems incomplete. Run again after the upload is finished.")
             #if self.start_time or self.end_time: # trim if specified
             #    print("Trimming the audio file.")
             #    self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
-            if self.skip_silence and not self.start_time:
-                sec = get_silence_duration(self._input_audio)
-                if sec > 0.0:
-                    print(f"Leading silence detected. Skipping {sec} seconds.")
-                    self.start_time = sec
+            print(f"Loading audio file {self._audio_file_path}")
+            self._audio_data = decode_audio(self._audio_file_path)
 
+            if self.skip_silence:
+                leading, trailing, _ = trim_silence(self._audio_data)
+                #sec = get_silence_duration(self._audio_file_path)
+                #if sec > 0.0:
+                if leading > 0.0 and not self.start_time:
+                    print(f"Leading silence detected. Skipping {int(leading)} seconds.")
+                    self.start_time = leading
+                if trailing > 0.0 and not self.end_time:
+                    print(f"Trailing silence detected. Skipping after {int(trailing)} seconds.")
+                    self.end_time = trailing
+
+
+    def get_audio_slice(self,
+                         start_time: Optional[Union[int, float]] = None,
+                         end_time: Optional[Union[int, float]] = None):
+        sr = self.model.feature_extractor.sampling_rate if self.model else 16000
+        i_start = 0 if not start_time else int(start_time * sr)
+        i_end = len(self._audio_data) if not end_time else int(end_time * sr)
+        return self._audio_data[i_start:i_end]
 
     def transcribe(self) -> SpeakerSegmentList:
         """Wrapper for faster-whisper transcription.
@@ -154,11 +171,7 @@ class Worker:
             end_time: Optional[Union[int, float]] = None) -> Tuple[SpeakerSegmentList, Any]:
         """Commonly used by `transcribe()` and `transcribe_segmented().`
         """
-        audio = read_audio(
-                    self.input_audio,
-                    start_time=start_time,
-                    end_time=end_time
-                ).stdout
+        audio = self.get_audio_slice(start_time, end_time)
         segments, _ = faster_whisper_transcribe(
                 audio=audio,
                 model=self.model,
@@ -171,7 +184,6 @@ class Worker:
                 #chunk_length=self.chunk_length,
                 batch_size=self.batch_size,
             )
-        del audio
         if segments and start_time:
             for item in segments:
                 item.shift_time(start_time)
@@ -180,14 +192,8 @@ class Worker:
 
     def diarize(self):
         print("Diarizing...")
-        ## pyannote.audio cannot handle stdout file-like object correctry. So, pass the audio as BytesIO.
-        audio = BytesIO(read_audio(
-                    self.input_audio,
-                    start_time=self.start_time,
-                    end_time=self.end_time
-                ).stdout.read())
         segments = _diarize(
-            audio=audio,
+            audio=self.get_audio_slice(self.start_time, self.end_time),
             hugging_face_token=self.hugging_face_token,
         )
         if segments and self.start_time:
@@ -196,8 +202,8 @@ class Worker:
         return segments
 
     def _write_result(self, speaker_segments, with_speakers=False):
-        if isinstance(self.input_audio, str):
-            outfilename = self.input_audio
+        if isinstance(self.audio_file_path, str):
+            outfilename = self.audio_file_path
         else:
             outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
         return speaker_segments.write_result(
@@ -238,8 +244,8 @@ class Worker:
             doc.txt_to_word(diarized_txt)
             download_from_colab(doc.docfilename)
         # DL audio file
-        if not self.audio == self.input_audio:
-            files_to_download.append(self.input_audio)
+        if not self.audio == self.audio_file_path:
+            files_to_download.append(self.audio_file_path)
 
         for file in files_to_download:
             print(f"Downloading {file}")
@@ -269,8 +275,8 @@ class Worker:
         download_from_colab(doc.docfilename)
 
         # DL audio file
-        if not self.audio == self.input_audio:
-            files_to_download.append(self.input_audio)
+        if not self.audio == self.audio_file_path:
+            files_to_download.append(self.audio_file_path)
 
         for file in files_to_download:
             print(f"Downloading {file}")
