@@ -2,11 +2,9 @@ import logging
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy
 from typing import Union, Optional, BinaryIO
-from io import BytesIO
 from numpy import ndarray
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from .audio import read_audio
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 class DiarizationPipeline:
@@ -32,8 +30,8 @@ class DiarizationPipeline:
             ) -> SpeakerSegmentList:
         if isinstance(audio, ndarray):
             audio_data = {"waveform": from_numpy(audio[None, :]), "sample_rate": 16000}
-        elif isinstance(audio, str):
-            audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
+        #elif isinstance(audio, str):
+        #    audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
         else:
             audio_data = {'uri': 'audio_stream', 'audio': audio}
 

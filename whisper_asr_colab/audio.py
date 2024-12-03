@@ -1,14 +1,115 @@
 import sys
+import re
 import os
 import time
 import subprocess
 import ffmpeg
 import numpy as np
-from typing import Union, Optional
+from torch import from_numpy, Tensor
+from typing import Union, Optional, Tuple
+from dataclasses import dataclass
 from .utils import sanitize_filename
+from faster_whisper import decode_audio
 
-def dl_audio(url: str, password: str = ""):
+@dataclass
+class Audio:
+    url: Optional[str] = None
+    password: Optional[str] = None
+    file_path: Optional[str] = None
+    sampling_rate: Optional[int] = 16000
+    start_frame: Optional[int] = None
+    end_frame: Optional[int] = None
+    __rawdata: Optional[np.ndarray] = None
+    __tensor: Optional[Tensor] = None
+
+
+    @property
+    def ndarray(self) -> np.ndarray:
+        if self.__rawdata is not None:
+            return self.__rawdata
+        if self.file_path is None and self.url is None:
+            raise ValueError("No url or file path set.")
+        if self.file_path is None:
+            self.file_path = dl_audio(self.url, self.password)
+        print(f"Loading audio file {self.file_path}")
+        self.__rawdata = decode_audio(self.file_path, self.sampling_rate)
+        return self.__rawdata[self.start_frame:self.end_frame]
+
+    @property
+    def tensor(self) -> Tensor:
+        if self.__tensor is None:
+            # Shares memory with ndarray
+            self.__tensor = from_numpy(self.ndarray)
+        return self.__tensor[self.start_frame:self.end_frame]
+
+
+    @property
+    def live_stream(self) -> subprocess.Popen:
+        if not self.url:
+            raise ValueError("No url set.")
+        command = ["yt-dlp", "-g", self.url, "-x", "-S", "+acodec:mp4a", "-q"]
+        audio_url = subprocess.check_output(command).decode("utf-8").strip()
+        return subprocess.Popen(
+            [
+                "ffmpeg",
+                "-i", audio_url,
+                "-vn",
+                "-f", "s16le",
+                "-acodec", "pcm_s16le",
+                "-ac", "1",
+                "-ar", "16000",
+                "-loglevel", "quiet",
+                "-",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+
+    @property
+    def start_time(self):
+        return (self.start_frame if self.start_frame else 0) / self.sampling_rate
+
+    @property
+    def end_time(self):
+        return (self.end_frame if self.end_frame else len(self._rawdata)) / self.sampling_rate
+
+    @start_time.setter
+    def start_time(self, sec : Union[int, float]):
+        self.start_frame = int(sec * self.sampling_rate)
+
+    @end_time.setter
+    def end_time(self, sec : Union[int, float]):
+        self.end_frame = int(sec * self.sampling_rate)
+
+    @staticmethod
+    def from_path_or_url(source: str) -> "Audio":
+        if re.match(r"^(https://).+", source):
+            return Audio(url=source)
+        else:
+            return Audio(file_path=source)
+
+    def set_silence_skip(self, threshold=0.1) -> Tuple[Union[int, None], Union[int, None]]:
+        """Set start_frame and end_frame based on silence detection"""
+        audio_data = np.abs(self.ndarray)
+        non_silent_indices = np.where(audio_data > threshold)[0]
+        if len(non_silent_indices) == 0:
+            print("Entire signal is silent!")
+            return None, None
+        leading = non_silent_indices[0]
+        trailing = non_silent_indices[-1]
+        if leading > 0 and not self.start_frame:
+            print(f"Leading silence detected. Skipping {int(leading / self.sampling_rate)} seconds.")
+            self.start_frame = int(leading)
+        if trailing < len(self.ndarray) and not self.end_frame:
+            print(f"Trailing silence detected. Skipping after {int(trailing / self.sampling_rate)} seconds.")
+            self.end_frame = int(trailing) + 1
+        return self.start_frame, self.end_frame
+
+
+def dl_audio(url: str, password: Optional[str] = None):
     """Download file from Internet"""
+    print(f"Downloading audio from {url}")
     # YoutubeDL class causes download errors, using external command instead
     options = ["-x", "-S", "+acodec:mp4a", "-o", "%(title)s.%(ext)s"]
     if password:
@@ -23,99 +124,8 @@ def dl_audio(url: str, password: str = ""):
     return outfilename
 
 
-def trim_audio(
-        audiopath: str,
-        start_time: Union[str, int, float] = "",
-        end_time: Union[str, int, float] = ""
-    ):
-    start_time = str(start_time)
-    end_time = str(end_time)
-    if start_time and end_time:
-        input = ffmpeg.input(audiopath, ss=start_time, to=end_time)
-    elif not start_time and end_time:
-        input = ffmpeg.input(audiopath, to=end_time)
-    else:
-        input = ffmpeg.input(audiopath, ss=start_time)
-    input_base, input_ext = os.path.splitext(audiopath)
-    input_path = f"{input_base}_{sanitize_filename(start_time)}_{sanitize_filename(end_time)}{input_ext}"
-    print(f"Trimming audio from {start_time} to {end_time}.")
-    ffmpeg.output(input, input_path, acodec="copy", vcodec="copy").run(
-            overwrite_output=True
-            )
-    return input_path
-
-
-def read_audio(
-        file: str,
-        sr: int = 16000,
-        format: str = "wav", # output format
-        start_time: Optional[Union[int, float, str]] = None,
-        end_time: Optional[Union[int, float, str]] = None
-    ) -> subprocess.Popen:
-    """Read audio file with resampling and time duration
-    Args:
-        file (str): Audio file path
-        sr (int, optional): Sampling rate. Defaults to 16000.
-        format (str, optional): Output format. Defaults to "wav".
-        start_time (Optional[Union[int, float, str]], optional): Audio start time. Defaults to None.
-        end_time (Optional[Union[int, float, str]], optional): Audio end time. Defaults to None.
-    Returns:
-        subprocess.Popen
-    """
-    try:
-        cmd = [
-            "ffmpeg",
-            "-nostdin",
-            "-threads", "0",
-            "-i", file,
-            "-f", format,
-            "-ac", "1",
-            "-acodec", "pcm_s16le",
-            "-ar", str(sr),
-            #"-loglevel", "quiet",
-        ]
-        if start_time:
-            cmd.extend(["-ss", str(start_time)])
-        if end_time:
-            cmd.extend(["-to", str(end_time)])
-        cmd.append("-")
-        return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
-
-
-def open_stream(url: str) -> subprocess.Popen:
-    command = ["yt-dlp", "-g", url, "-x", "-S", "+acodec:mp4a"]
-    audio_url = subprocess.check_output(command).decode("utf-8").strip()
-    return read_audio(file=audio_url)
-
-
-def get_silence_duration(audio_file) -> float:
-    """get silence duration at the top of the audio"""
-    output = subprocess.run(
-        [
-            "ffmpeg",
-            "-i", audio_file,
-            "-af", "silencedetect=noise=-50dB:d=5",
-            "-f", "null", "-"
-        ],
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8"
-    )
-    result = []
-    silence_duration = 0.0
-    for line in output.stderr.splitlines():
-        if "silencedetect" in line:
-            result.append(line)
-    if len(result) > 0 and "silence_start: 0" in result[0]:
-        silence_duration = float(result[1].split()[-1])
-    return silence_duration
-
-
 def trim_silence(audio_data: np.ndarray, threshold=0.01, sample_rate=16000):
-    """Experimental
-    Trim leading and trailing silence in audio data.
+    """Trim leading and trailing silence in audio data.
     Returns:
         tuple: (trimmed_audio, start_index, end_index) indicating the non-silent section.
     """
@@ -147,3 +157,62 @@ def subprocess_progress(cmd: list):
             if p.poll() is not None:
                 break
             time.sleep(0.5)
+
+## todo
+#            self._audio_file_path = self.audio
+#            if re.match(r"^(https://).+", self.audio):
+#                self._audio_file_path = dl_audio(self.audio, self.password)
+#            else:
+#                # If the file size is small, check for incomplete upload.
+#                filesize = os.path.getsize(self._audio_file_path)
+#                if filesize < 10 ** 7:  # less than 10MB
+#                    time.sleep(10)
+#                    filesize2 = os.path.getsize(self._audio_file_path)
+#                    if (filesize2 - filesize) > 0:
+#                        # File uploading seems incomplete
+#                        raise IOError("Upload seems incomplete. Run again after the upload is finished.")
+
+
+## Depricated
+def get_silence_duration(audio_file) -> float:
+    """get silence duration at the top of the audio"""
+    output = subprocess.run(
+        [
+            "ffmpeg",
+            "-i", audio_file,
+            "-af", "silencedetect=noise=-50dB:d=5",
+            "-f", "null", "-"
+        ],
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8"
+    )
+    result = []
+    silence_duration = 0.0
+    for line in output.stderr.splitlines():
+        if "silencedetect" in line:
+            result.append(line)
+    if len(result) > 0 and "silence_start: 0" in result[0]:
+        silence_duration = float(result[1].split()[-1])
+    return silence_duration
+
+def trim_audio(
+        audiopath: str,
+        start_time: Union[str, int, float] = "",
+        end_time: Union[str, int, float] = ""
+    ):
+    start_time = str(start_time)
+    end_time = str(end_time)
+    if start_time and end_time:
+        input = ffmpeg.input(audiopath, ss=start_time, to=end_time)
+    elif not start_time and end_time:
+        input = ffmpeg.input(audiopath, to=end_time)
+    else:
+        input = ffmpeg.input(audiopath, ss=start_time)
+    input_base, input_ext = os.path.splitext(audiopath)
+    input_path = f"{input_base}_{sanitize_filename(start_time)}_{sanitize_filename(end_time)}{input_ext}"
+    print(f"Trimming audio from {start_time} to {end_time}.")
+    ffmpeg.output(input, input_path, acodec="copy", vcodec="copy").run(
+            overwrite_output=True
+            )
+    return input_path

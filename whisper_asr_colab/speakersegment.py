@@ -202,12 +202,13 @@ class SpeakerSegmentList(List):
         fh.close()
         return (outfilename,)
 
+    @staticmethod
     def save_segments(self, jsonfile: str):
         """Save segments to a JSON file."""
         with open(jsonfile, 'w') as fh:
             jsondump([asdict(segment) for segment in self], fh)
 
-
+    @staticmethod
     def load_segments(jsonfile: str) -> SpeakerSegmentList:
         """Load segments from a JSON file."""
         with open(jsonfile, 'r') as fh:

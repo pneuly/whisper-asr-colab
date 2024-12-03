@@ -8,7 +8,8 @@ def perform_asr(audio:str, batch_size:int):
         audio=audio,
         batch_size=batch_size,
     )
-    segments = list(segments)
+    for segment in segments:
+        print(segment.text)
     assert info.all_language_probs is not None
     assert info.language == "ja"
     assert info.language_probability > 0.9

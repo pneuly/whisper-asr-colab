@@ -1,16 +1,12 @@
-import os
-import re
-import time
 import gc
-from numpy import ndarray
 from torch.cuda import empty_cache
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Union, Iterable, BinaryIO, Tuple, Any
+from typing import Optional, Union, Iterable, Tuple, Any
 from concurrent.futures import ThreadPoolExecutor
-from faster_whisper import WhisperModel as FasterWhisperModel, decode_audio
+from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
-from .audio import dl_audio, get_silence_duration, trim_silence
+from .audio import Audio
 from .utils import str2seconds, download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
@@ -19,13 +15,13 @@ from .speakersegment import SpeakerSegmentList
 
 @dataclass
 class Worker:
-    # model options
+    # core parameters
+    audio: Union[Audio, str]
     model_size: str = "large-v3-turbo"
     device: str = "auto"
-    model: Optional[FasterWhisperModel] = None
 
     # transcribe options
-    audio: str = "" # original audio file path or url
+    model: Optional[FasterWhisperModel] = None
     language: Optional[str] = None
     multilingual: bool = False
     initial_prompt: Optional[Union[str, Iterable[int]]] = None
@@ -50,56 +46,32 @@ class Worker:
     asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
     diarized_segments: Optional[SpeakerSegmentList] = None  # result from pyannote
 
-    _audio_file_path: Optional[str] = None
-    _audio_data: Optional[ndarray] = None  # audio data to pass to whisper and pyannote
-
-    @property
-    def audio_file_path(self) -> Union[str, BinaryIO]:
-        return self._audio_file_path
 
     def __post_init__(self):
-        # download audio if needed
-        if self.audio and not self.realtime:
+        if isinstance(self.audio, str):
+            self.audio = Audio.from_path_or_url(self.audio)
+        if self.password:
+            self.audo.password = self.password
+        if self.realtime:
+            self.skip_silence = False
+        if self.start_time:
             self.start_time = str2seconds(self.start_time)
+            self.audio.start_time = self.start_time
+        if self.end_time:
             self.end_time = str2seconds(self.end_time)
+            self.audio.end_time = self.end_time
+        if self.timestamp_offset:
             self.timestamp_offset = str2seconds(self.timestamp_offset)
-            self._audio_file_path = self.audio
-            if re.match(r"^(https://).+", self.audio):
-                self._audio_file_path = dl_audio(self.audio, self.password)
-            else:
-                # If the file size is small, check for incomplete upload.
-                filesize = os.path.getsize(self._audio_file_path)
-                if filesize < 10 ** 7:  # less than 10MB
-                    time.sleep(10)
-                    filesize2 = os.path.getsize(self._audio_file_path)
-                    if (filesize2 - filesize) > 0:
-                        # File uploading seems incomplete
-                        raise IOError("Upload seems incomplete. Run again after the upload is finished.")
-            #if self.start_time or self.end_time: # trim if specified
-            #    print("Trimming the audio file.")
-            #    self._input_audio = trim_audio(self._input_audio, self.start_time, self.end_time)
-            print(f"Loading audio file {self._audio_file_path}")
-            self._audio_data = decode_audio(self._audio_file_path)
+        if self.skip_silence:
+            self.audio.set_silence_skip()
 
-            if self.skip_silence:
-                leading, trailing, _ = trim_silence(self._audio_data)
-                #sec = get_silence_duration(self._audio_file_path)
-                #if sec > 0.0:
-                if leading > 0.0 and not self.start_time:
-                    print(f"Leading silence detected. Skipping {int(leading)} seconds.")
-                    self.start_time = leading
-                if trailing > 0.0 and not self.end_time:
-                    print(f"Trailing silence detected. Skipping after {int(trailing)} seconds.")
-                    self.end_time = trailing
-
-
-    def get_audio_slice(self,
-                         start_time: Optional[Union[int, float]] = None,
-                         end_time: Optional[Union[int, float]] = None):
-        sr = self.model.feature_extractor.sampling_rate if self.model else 16000
-        i_start = 0 if not start_time else int(start_time * sr)
-        i_end = len(self._audio_data) if not end_time else int(end_time * sr)
-        return self._audio_data[i_start:i_end]
+#    def get_audio_slice(self,
+#                         start_time: Optional[Union[int, float]] = None,
+#                         end_time: Optional[Union[int, float]] = None):
+#        sr = self.model.feature_extractor.sampling_rate if self.model else 16000
+#        i_start = 0 if not start_time else int(start_time * sr)
+#        i_end = len(self._audio_data) if not end_time else int(end_time * sr)
+#        return self._audio_data[i_start:i_end]
 
     def transcribe(self) -> SpeakerSegmentList:
         """Wrapper for faster-whisper transcription.
@@ -116,16 +88,14 @@ class Worker:
         if self.realtime: # realtime trascription
             print("Transcribing on the fly...")
             segments = realtime_transcribe(
-                url = self.audio,
+                process=self.audio.live_stream,
                 model=self.model,
                 language = self.language,
                 initial_prompt = self.initial_prompt
             )
         else:  # normal transcription
             print(f"Transcribing from {self.start_time if self.start_time else ''}...")
-            segments, _ = self.call_faster_whisper_transcribe(
-                                                    self.start_time,
-                                                    self.end_time)
+            segments, _ = self.call_faster_whisper_transcribe()
         return segments
 
 
@@ -165,15 +135,11 @@ class Worker:
         return asr_result
 
 
-    def call_faster_whisper_transcribe(
-            self,
-            start_time: Optional[Union[int, float]] = None,
-            end_time: Optional[Union[int, float]] = None) -> Tuple[SpeakerSegmentList, Any]:
+    def call_faster_whisper_transcribe(self) -> Tuple[SpeakerSegmentList, Any]:
         """Commonly used by `transcribe()` and `transcribe_segmented().`
         """
-        audio = self.get_audio_slice(start_time, end_time)
         segments, _ = faster_whisper_transcribe(
-                audio=audio,
+                audio=self.audio.ndarray,
                 model=self.model,
                 language = self.language,
                 multilingual=self.multilingual,
@@ -184,6 +150,7 @@ class Worker:
                 #chunk_length=self.chunk_length,
                 batch_size=self.batch_size,
             )
+        start_time = self.audio.start_time
         if segments and start_time:
             for item in segments:
                 item.shift_time(start_time)
@@ -193,7 +160,7 @@ class Worker:
     def diarize(self):
         print("Diarizing...")
         segments = _diarize(
-            audio=self.get_audio_slice(self.start_time, self.end_time),
+            audio=self.audio.ndarray,
             hugging_face_token=self.hugging_face_token,
         )
         if segments and self.start_time:
@@ -202,8 +169,8 @@ class Worker:
         return segments
 
     def _write_result(self, speaker_segments, with_speakers=False):
-        if isinstance(self.audio_file_path, str):
-            outfilename = self.audio_file_path
+        if isinstance(self.audio.file_path, str):
+            outfilename = self.audio.file_path
         else:
             outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
         return speaker_segments.write_result(
@@ -244,8 +211,8 @@ class Worker:
             doc.txt_to_word(diarized_txt)
             download_from_colab(doc.docfilename)
         # DL audio file
-        if not self.audio == self.audio_file_path:
-            files_to_download.append(self.audio_file_path)
+        if self.audio.url:
+            files_to_download.append(self.audio.file_path)
 
         for file in files_to_download:
             print(f"Downloading {file}")
@@ -272,11 +239,12 @@ class Worker:
         print("Writing to docx...")
         doc = DocxGenerator()
         doc.txt_to_word(diarized_txt)
+        print(f"Downloading {doc.docfilename}")
         download_from_colab(doc.docfilename)
 
         # DL audio file
-        if not self.audio == self.audio_file_path:
-            files_to_download.append(self.audio_file_path)
+        if not self.audio.url:
+            files_to_download.append(self.audio.file_path)
 
         for file in files_to_download:
             print(f"Downloading {file}")

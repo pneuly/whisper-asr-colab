@@ -2,10 +2,10 @@ import time
 import datetime
 from logging import getLogger
 from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
+import numpy as np
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from IPython.display import display
 import ipywidgets as widgets
-from .audio import open_stream
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 logger = getLogger(__name__)
@@ -68,15 +68,13 @@ def faster_whisper_transcribe(
     return segments, info
 
 def realtime_transcribe(
-        url: str,
+        process, # stream
         model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
         initial_prompt: Optional[str] = None,
     ) -> SpeakerSegmentList:
-    segments = []
     if model is None:
         model = FasterWhisperModel("large-v3-turbo")
-    process = open_stream(url)
     buffer = b""
     fh1 = open(
         datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".txt",
@@ -104,8 +102,7 @@ def realtime_transcribe(
         initial_prompt: Optional[str] = None
         ) -> SpeakerSegmentList:
         segments, _ =  model.transcribe(
-            #audio=np_frombuffer(data, np_int16).astype(np_float32) / 32768.0,
-            audio=data,
+            audio=np.frombuffer(data, np.int16).astype(np.float32) / 32768.0,
             language=language,
             initial_prompt=initial_prompt
             )
@@ -115,6 +112,7 @@ def realtime_transcribe(
             outfh.flush()
         return segments
 
+    segments = SpeakerSegmentList()
     while not stop_transcribing:
         audio_data = process.stdout.read(16000 * 2)
         if process.poll() is not None:
