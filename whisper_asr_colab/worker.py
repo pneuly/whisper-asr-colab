@@ -36,8 +36,8 @@ class Worker:
     diarization: bool = True
     hugging_face_token: str = ""
     password: str = ""
-    start_time: float = 0.0
-    end_time: float = 0.0
+#    start_time: float = 0.0
+#    end_time: float = 0.0
     timestamp_offset: float = 0.0
     realtime: bool = False
     skip_silence: bool = True  # If True, skip the leading silence of the audio
@@ -55,12 +55,6 @@ class Worker:
         if self.realtime:
             print("`skip_silence` is disabled since `realtime` mode is enabled.")
             self.skip_silence = False
-        if self.start_time:
-            self.start_time = str2seconds(self.start_time)
-            self.audio.start_time = self.start_time
-        if self.end_time:
-            self.end_time = str2seconds(self.end_time)
-            self.audio.end_time = self.end_time
         if self.timestamp_offset:
             self.timestamp_offset = str2seconds(self.timestamp_offset)
         if self.skip_silence:
@@ -95,7 +89,7 @@ class Worker:
                 initial_prompt = self.initial_prompt
             )
         else:  # normal transcription
-            print(f"Transcribing from {self.start_time if self.start_time else ''}...")
+            print(f"Transcribing from {self.audio.start_time if self.audio.start_time else 'start'}")
             segments, _ = self.call_faster_whisper_transcribe()
         return segments
 
@@ -164,9 +158,9 @@ class Worker:
             audio=self.audio.ndarray,
             hugging_face_token=self.hugging_face_token,
         )
-        if segments and self.start_time:
+        if segments and self.audio.start_time:
             for item in segments:
-                item.shift_time(self.start_time)
+                item.shift_time(self.audio.start_time)
         return segments
 
     def _write_result(self, speaker_segments, with_speakers=False):

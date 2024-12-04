@@ -8,8 +8,7 @@ import ffmpeg
 import numpy as np
 from typing import Union, Optional, Tuple
 from dataclasses import dataclass
-from .utils import sanitize_filename
-from faster_whisper import decode_audio
+from .utils import sanitize_filename, str2seconds
 
 
 @dataclass
@@ -53,21 +52,7 @@ class Audio:
             raise ValueError("No url set.")
         command = ["yt-dlp", "-g", self.url, "-x", "-S", "+acodec:mp4a", "-q"]
         audio_url = subprocess.check_output(command).decode("utf-8").strip()
-        return subprocess.Popen(
-            [
-                "ffmpeg",
-                "-i", audio_url,
-                "-vn",
-                "-f", "s16le",
-                "-acodec", "pcm_s16le",
-                "-ac", "1",
-                "-ar", "16000",
-                "-loglevel", "quiet",
-                "-",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
+        return decode_audio_pipe(audio_url, 16000)
 
 
     @property
@@ -79,11 +64,15 @@ class Audio:
         return (self.end_frame if self.end_frame else len(self._rawdata)) / self.sampling_rate
 
     @start_time.setter
-    def start_time(self, sec : Union[int, float]):
+    def start_time(self, sec : Union[str, int, float]):
+        if isinstance(sec, str):
+            sec = str2seconds(sec)
         self.start_frame = int(sec * self.sampling_rate)
 
     @end_time.setter
-    def end_time(self, sec : Union[int, float]):
+    def end_time(self, sec : Union[str, int, float]):
+        if isinstance(sec, str):
+            sec = str2seconds(sec)
         self.end_frame = int(sec * self.sampling_rate)
 
     @staticmethod
@@ -105,10 +94,38 @@ class Audio:
         if leading > 0 and not self.start_frame:
             print(f"Leading silence detected. Skipping {int(leading / self.sampling_rate)} seconds.")
             self.start_frame = int(leading)
-        if trailing < len(self.ndarray) and not self.end_frame:
-            print(f"Trailing silence detected. Skipping after {int(trailing / self.sampling_rate)} seconds.")
+        frame_size = len(self.ndarray)
+        if trailing < frame_size and not self.end_frame:
+            trailing_sec = int((frame_size - trailing)/ self.sampling_rate)
+            print(f"Trailing silence detected. Skipping the last {trailing_sec} seconds.")
             self.end_frame = int(trailing) + 1
         return self.start_frame, self.end_frame
+
+
+def decode_audio(audio, sampling_rate=16000):
+    """An alternative to faster_whisper.decode_audio(),
+    addressing its high memory consumption."""
+    return np.frombuffer(
+        decode_audio_pipe(audio, sampling_rate).stdout.read(),
+        np.int16
+        ).flatten().astype(np.float32) / 32768.0
+
+def decode_audio_pipe(audio: str, sampling_rate: int = 16000):
+    return subprocess.Popen(
+        [
+            "ffmpeg",
+            "-i", audio,
+            "-vn",
+            "-f", "s16le",
+            "-acodec", "pcm_s16le",
+            "-ac", "1",
+            "-ar", str(sampling_rate),
+            "-loglevel", "quiet",
+            "-",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
 
 
 def dl_audio(url: str, password: Optional[str] = None):
@@ -128,24 +145,6 @@ def dl_audio(url: str, password: Optional[str] = None):
     return outfilename
 
 
-def trim_silence(audio_data: np.ndarray, threshold=0.01, sample_rate=16000):
-    """Trim leading and trailing silence in audio data.
-    Returns:
-        tuple: (trimmed_audio, start_index, end_index) indicating the non-silent section.
-    """
-    audio_data = np.abs(audio_data)
-    non_silent_indices = np.where(audio_data > threshold)[0]
-    if len(non_silent_indices) == 0:
-        print("Entire signal is silent!")
-        return 0, 0, np.array([])
-    leading_silence_end = non_silent_indices[0]
-    trailing_silence_start = non_silent_indices[-1]
-    return (leading_silence_end / sample_rate,
-            trailing_silence_start / sample_rate,
-            audio_data[leading_silence_end:trailing_silence_start+1]
-    )
-
-
 def is_upload_complete(file: str, threshold: int = 10000000) -> bool:
     """Check if the file upload is complete when the file size is
     below the threshold (bytes). Default threshold is 10MB"""
@@ -153,7 +152,6 @@ def is_upload_complete(file: str, threshold: int = 10000000) -> bool:
     if filesize < threshold:
         time.sleep(10)
         filesize2 = os.path.getsize(file)
-        print(f"filesize2: {filesize2}")
         if (filesize2 - filesize) > 0:
         # File uploading seems incomplete
             return False
