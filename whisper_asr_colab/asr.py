@@ -74,6 +74,7 @@ def realtime_transcribe(
         language: Optional[str] = None,
         initial_prompt: Optional[str] = None,
     ) -> SpeakerSegmentList:
+    ## TODO  make choppy transcription continuous one
     if model is None:
         model = FasterWhisperModel("large-v3-turbo")
     buffer = b""

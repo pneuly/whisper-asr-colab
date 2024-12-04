@@ -25,11 +25,14 @@ class Audio:
 
     @property
     def ndarray(self) -> np.ndarray:
-        if self.__rawdata is not None:
-            return self.__rawdata
+        if self.__rawdata is None:
+            self._load_audio()
+        return self.__rawdata[self.start_frame:self.end_frame]
+
+    def _load_audio(self) -> None:
         if self.file_path is None and self.url is None:
             raise ValueError("No url or file path set.")
-        if not (self.file_path and os.path.exists(self.file_path)):
+        if self.file_path is None or not os.path.exists(self.file_path):
             self.file_path = dl_audio(self.url, self.password)
         print(f"Loading audio file {self.file_path}")
         if self.verify_upload and not is_upload_complete(self.file_path):
@@ -39,12 +42,12 @@ class Audio:
                 display.display(display.Javascript(f'alert("{message}")'))
                 display.display(display.HTML(f'<div style="color: red; font-size:large; font-weight: bold;">⚠️ {message}</div>'))
                 warnings.filterwarnings("ignore", message="To exit: use 'exit', 'quit', or Ctrl-D.")
-                raise sys.exit()
+                raise SystemExit
             else:
                 sys.exit(message)
         self.__rawdata = decode_audio(self.file_path, self.sampling_rate)
-        return self.__rawdata[self.start_frame:self.end_frame]
 
+    ## TODO  def write_data()
 
     @property
     def live_stream(self) -> subprocess.Popen:
