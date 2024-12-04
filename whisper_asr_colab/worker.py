@@ -53,6 +53,7 @@ class Worker:
         if self.password:
             self.audo.password = self.password
         if self.realtime:
+            print("`skip_silence` is disabled since `realtime` mode is enabled.")
             self.skip_silence = False
         if self.start_time:
             self.start_time = str2seconds(self.start_time)
@@ -182,9 +183,7 @@ class Worker:
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
-
         self.asr_segments = self.transcribe()
-
         print("Writing result...")
         outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
@@ -209,6 +208,7 @@ class Worker:
             print("Writing to docx...")
             doc = DocxGenerator()
             doc.txt_to_word(diarized_txt)
+            print(f"Downloading {doc.docfilename}")
             download_from_colab(doc.docfilename)
         # DL audio file
         if self.audio.url:

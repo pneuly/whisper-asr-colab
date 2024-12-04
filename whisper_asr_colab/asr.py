@@ -8,6 +8,7 @@ from IPython.display import display
 import ipywidgets as widgets
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
+
 logger = getLogger(__name__)
 
 def faster_whisper_transcribe(
@@ -68,7 +69,7 @@ def faster_whisper_transcribe(
     return segments, info
 
 def realtime_transcribe(
-        process, # stream
+        process: "subprocess.Popen", # streaming process
         model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
         initial_prompt: Optional[str] = None,

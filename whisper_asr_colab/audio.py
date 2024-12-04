@@ -2,14 +2,15 @@ import sys
 import re
 import os
 import time
+import warnings
 import subprocess
 import ffmpeg
 import numpy as np
-from torch import from_numpy, Tensor
 from typing import Union, Optional, Tuple
 from dataclasses import dataclass
 from .utils import sanitize_filename
 from faster_whisper import decode_audio
+
 
 @dataclass
 class Audio:
@@ -19,8 +20,8 @@ class Audio:
     sampling_rate: Optional[int] = 16000
     start_frame: Optional[int] = None
     end_frame: Optional[int] = None
+    verify_upload: bool = True
     __rawdata: Optional[np.ndarray] = None
-    __tensor: Optional[Tensor] = None
 
 
     @property
@@ -29,18 +30,21 @@ class Audio:
             return self.__rawdata
         if self.file_path is None and self.url is None:
             raise ValueError("No url or file path set.")
-        if self.file_path is None:
+        if not (self.file_path and os.path.exists(self.file_path)):
             self.file_path = dl_audio(self.url, self.password)
         print(f"Loading audio file {self.file_path}")
+        if self.verify_upload and not is_upload_complete(self.file_path):
+            message = f"Uploaing {self.file_path} seems incomplete. Run again after the upload is finished."
+            if 'IPython' in sys.modules:
+                display = sys.modules["IPython"].display
+                display.display(display.Javascript(f'alert("{message}")'))
+                display.display(display.HTML(f'<div style="color: red; font-size:large; font-weight: bold;">⚠️ {message}</div>'))
+                warnings.filterwarnings("ignore", message="To exit: use 'exit', 'quit', or Ctrl-D.")
+                raise sys.exit()
+            else:
+                sys.exit(message)
         self.__rawdata = decode_audio(self.file_path, self.sampling_rate)
         return self.__rawdata[self.start_frame:self.end_frame]
-
-    @property
-    def tensor(self) -> Tensor:
-        if self.__tensor is None:
-            # Shares memory with ndarray
-            self.__tensor = from_numpy(self.ndarray)
-        return self.__tensor[self.start_frame:self.end_frame]
 
 
     @property
@@ -141,6 +145,21 @@ def trim_silence(audio_data: np.ndarray, threshold=0.01, sample_rate=16000):
             audio_data[leading_silence_end:trailing_silence_start+1]
     )
 
+
+def is_upload_complete(file: str, threshold: int = 10000000) -> bool:
+    """Check if the file upload is complete when the file size is
+    below the threshold (bytes). Default threshold is 10MB"""
+    filesize = os.path.getsize(file)
+    if filesize < threshold:
+        time.sleep(10)
+        filesize2 = os.path.getsize(file)
+        print(f"filesize2: {filesize2}")
+        if (filesize2 - filesize) > 0:
+        # File uploading seems incomplete
+            return False
+    return True
+
+
 def subprocess_progress(cmd: list):
     p = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=False
@@ -157,20 +176,6 @@ def subprocess_progress(cmd: list):
             if p.poll() is not None:
                 break
             time.sleep(0.5)
-
-## todo
-#            self._audio_file_path = self.audio
-#            if re.match(r"^(https://).+", self.audio):
-#                self._audio_file_path = dl_audio(self.audio, self.password)
-#            else:
-#                # If the file size is small, check for incomplete upload.
-#                filesize = os.path.getsize(self._audio_file_path)
-#                if filesize < 10 ** 7:  # less than 10MB
-#                    time.sleep(10)
-#                    filesize2 = os.path.getsize(self._audio_file_path)
-#                    if (filesize2 - filesize) > 0:
-#                        # File uploading seems incomplete
-#                        raise IOError("Upload seems incomplete. Run again after the upload is finished.")
 
 
 ## Depricated
