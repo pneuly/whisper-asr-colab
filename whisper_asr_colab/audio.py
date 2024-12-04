@@ -16,7 +16,7 @@ class Audio:
     url: Optional[str] = None
     password: Optional[str] = None
     file_path: Optional[str] = None
-    sampling_rate: Optional[int] = 16000
+    sampling_rate: int = 16000
     start_frame: Optional[int] = None
     end_frame: Optional[int] = None
     verify_upload: bool = True
@@ -85,7 +85,10 @@ class Audio:
         else:
             return Audio(file_path=source)
 
-    def set_silence_skip(self, threshold=0.1) -> Tuple[Union[int, None], Union[int, None]]:
+    def set_silence_skip(
+        self,
+        threshold: float = 0.1,
+        min_silence_duration: Union[int, float] = 5) -> Tuple[Union[int, None], Union[int, None]]:
         """Set start_frame and end_frame based on silence detection"""
         audio_data = np.abs(self.ndarray)
         non_silent_indices = np.where(audio_data > threshold)[0]
@@ -94,11 +97,12 @@ class Audio:
             return None, None
         leading = non_silent_indices[0]
         trailing = non_silent_indices[-1]
-        if leading > 0 and not self.start_frame:
+        min_frame_size = int(min_silence_duration * self.sampling_rate)
+        if (not self.start_frame) and (leading > min_frame_size):
             print(f"Leading silence detected. Skipping {int(leading / self.sampling_rate)} seconds.")
             self.start_frame = int(leading)
         frame_size = len(self.ndarray)
-        if trailing < frame_size and not self.end_frame:
+        if (not self.end_frame) and (trailing < frame_size) and (trailing + min_frame_size < frame_size):
             trailing_sec = int((frame_size - trailing)/ self.sampling_rate)
             print(f"Trailing silence detected. Skipping the last {trailing_sec} seconds.")
             self.end_frame = int(trailing) + 1
