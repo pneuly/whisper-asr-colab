@@ -7,16 +7,16 @@ from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
 from .audio import Audio
-from .utils import str2seconds, download_from_colab
+from .utils import download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
-from .speakersegment import SpeakerSegmentList
+from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 
 @dataclass
 class Worker:
     # core parameters
-    audio: Union[Audio, str]
+    audio: Audio
     model_size: str = "large-v3-turbo"
     device: str = "auto"
 
@@ -36,8 +36,6 @@ class Worker:
     diarization: bool = True
     hugging_face_token: str = ""
     password: str = ""
-#    start_time: float = 0.0
-#    end_time: float = 0.0
     timestamp_offset: float = 0.0
     realtime: bool = False
     skip_silence: bool = True  # If True, skip the leading silence of the audio
@@ -51,12 +49,10 @@ class Worker:
         if isinstance(self.audio, str):
             self.audio = Audio.from_path_or_url(self.audio)
         if self.password:
-            self.audo.password = self.password
+            self.audio.password = self.password
         if self.realtime:
             print("`skip_silence` is disabled since `realtime` mode is enabled.")
             self.skip_silence = False
-        if self.timestamp_offset:
-            self.timestamp_offset = str2seconds(self.timestamp_offset)
         if self.skip_silence:
             self.audio.set_silence_skip()
 
@@ -104,35 +100,35 @@ class Worker:
                     compute_type="default",
                 )
 
-        def _transcribe_and_add_speakers(speakerseg):
-            asr_result = SpeakerSegmentList()
-            segments, _ = self.call_faster_whisper_transcribe(
-                speakerseg.start,
-                speakerseg.end,
-            )
+        def _transcribe_and_add_speakers(speakerseg: SpeakerSegment) -> SpeakerSegmentList:
+            _asr_result = SpeakerSegmentList()
+            segments, _ = self.call_faster_whisper_transcribe()
             if segments:
                 segment = segments.combined
                 segment.speaker = speakerseg.speaker
-                asr_result.append(segment)
-            return asr_result
+                _asr_result.append(segment)
+            return _asr_result
 
+        asr_result = SpeakerSegmentList()
         with ThreadPoolExecutor() as executor:
-            speakersegs = self.diarized_segments.combine_same_speakers()
-            procs = []
-            for seg in speakersegs:
-                procs.append(executor.submit(_transcribe_and_add_speakers, seg))
-            executor.shutdown(wait=True)
-            asr_result = SpeakerSegmentList()
-            for proc in procs:
-                result = proc.result()
-                if result:
-                    asr_result.extend(result)
+            if self.diarized_segments is not None:
+                speakersegs = self.diarized_segments.combine_same_speakers()
+                procs = []
+                for seg in speakersegs:
+                    procs.append(executor.submit(_transcribe_and_add_speakers, seg))
+                executor.shutdown(wait=True)
+                for proc in procs:
+                    result = proc.result()
+                    if result:
+                        asr_result.extend(result)
         return asr_result
 
 
     def call_faster_whisper_transcribe(self) -> Tuple[SpeakerSegmentList, Any]:
         """Commonly used by `transcribe()` and `transcribe_segmented().`
         """
+        if self.audio.ndarray is None:
+            raise ValueError("Audio must be set in worker.audio.")
         segments, _ = faster_whisper_transcribe(
                 audio=self.audio.ndarray,
                 model=self.model,
@@ -154,6 +150,8 @@ class Worker:
 
     def diarize(self):
         print("Diarizing...")
+        if self.audio.ndarray is None:
+            raise ValueError("Audio must be specified in worker.audio.")
         segments = _diarize(
             audio=self.audio.ndarray,
             hugging_face_token=self.hugging_face_token,

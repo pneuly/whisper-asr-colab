@@ -12,7 +12,7 @@ class DiarizationPipeline:
         self,
         model_name: str = "pyannote/speaker-diarization-3.1",
         use_auth_token: Optional[str] = None,
-        device: Optional[Union[str, torch_device]] = "auto",
+        device: Union[str, torch_device] = "auto",
     ):
         if device == "auto":
             device = "cuda" if cuda_is_available() else "cpu"
@@ -52,7 +52,7 @@ class DiarizationPipeline:
 
 
 def diarize(
-        audio: Union[str, BinaryIO],
+        audio: Union[str, BinaryIO, ndarray],
         hugging_face_token: str,
     ) -> SpeakerSegmentList:
 
