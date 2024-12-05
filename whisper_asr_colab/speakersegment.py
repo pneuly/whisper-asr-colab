@@ -12,18 +12,18 @@ logger = getLogger(__name__)
 
 @dataclass
 class SpeakerSegment(Segment):
-    id: int = field(default=0),
-    seek: int = field(default=0),
-    start: float = field(default=0.0),
-    end: float = field(default=0.0),
-    text: str = field(default=""),
-    tokens: List[int] = field(default=[]),
-    temperature: float = field(default=0.0),
-    avg_logprob: float = field(default=0.0),
-    compression_ratio: float = field(default=0.0),
-    no_speech_prob: float = field(default=0.0),
-    words: list = field(default=None),
-    speaker: str = field(default=None),
+    id: int = field(default=0)
+    seek: int = field(default=0)
+    start: float = field(default=0.0)
+    end: float = field(default=0.0)
+    text: str = field(default="")
+    tokens: List[int] = field(default=[])
+    temperature: Optional[float] = field(default=None)
+    avg_logprob: float = field(default=0.0)
+    compression_ratio: float = field(default=0.0)
+    no_speech_prob: float = field(default=0.0)
+    words: Optional[list] = field(default=None)
+    speaker: Optional[str] = field(default=None)
 
     @property
     def duration(self):
@@ -33,9 +33,6 @@ class SpeakerSegment(Segment):
     def from_segment(cls, segment: Segment) -> SpeakerSegment:
         return cls(**segment.__dict__)
 
-    def append(self, item):
-        super().append(item)
-        return self
 
     def shift_time(self, offset: Union[int, float]):
         self.start += offset
@@ -66,6 +63,7 @@ class SpeakerSegment(Segment):
 class SpeakerSegmentList(List):
     def __init__(self, *args):
         super().__init__(args)
+        # ToDo ensure the type of args is SpeakerSegment
 
     @property
     def combined(self):

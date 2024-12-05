@@ -20,20 +20,20 @@ class Audio:
     start_frame: Optional[int] = None
     end_frame: Optional[int] = None
     verify_upload: bool = True
-    __rawdata: Optional[np.ndarray] = None
+    _rawdata: Optional[np.ndarray] = None
 
 
     @property
-    def ndarray(self) -> np.ndarray:
-        if self.__rawdata is None:
+    def ndarray(self) -> Union[np.ndarray,None]:
+        if self._rawdata is None:
             self._load_audio()
-        return self.__rawdata[self.start_frame:self.end_frame]
+        return self._rawdata[self.start_frame:self.end_frame] # type: ignore
 
     def _load_audio(self) -> None:
         if self.file_path is None and self.url is None:
             raise ValueError("No url or file path set.")
         if self.file_path is None or not os.path.exists(self.file_path):
-            self.file_path = dl_audio(self.url, self.password)
+            self.file_path = dl_audio(self.url, self.password) # type: ignore
         print(f"Loading audio file {self.file_path}")
         if self.verify_upload and not is_upload_complete(self.file_path):
             message = f"Uploaing {self.file_path} seems incomplete. Run again after the upload is finished."
@@ -45,7 +45,7 @@ class Audio:
                 raise SystemExit
             else:
                 sys.exit(message)
-        self.__rawdata = decode_audio(self.file_path, self.sampling_rate)
+        self._rawdata = decode_audio(self.file_path, self.sampling_rate)
 
     ## TODO  def write_data()
 
@@ -59,18 +59,21 @@ class Audio:
 
 
     @property
-    def start_time(self):
+    def start_time(self) -> float:
         return (self.start_frame if self.start_frame else 0) / self.sampling_rate
-
-    @property
-    def end_time(self):
-        return (self.end_frame if self.end_frame else len(self._rawdata)) / self.sampling_rate
 
     @start_time.setter
     def start_time(self, sec : Union[str, int, float]):
         if isinstance(sec, str):
             sec = str2seconds(sec)
         self.start_frame = int(sec * self.sampling_rate)
+
+    @property
+    def end_time(self) -> float:
+        if isinstance(self._rawdata, np.ndarray):
+            return (self.end_frame if self.end_frame else len(self._rawdata)) / self.sampling_rate
+        else:
+            return(0.0)
 
     @end_time.setter
     def end_time(self, sec : Union[str, int, float]):
@@ -90,6 +93,8 @@ class Audio:
         threshold: float = 0.1,
         min_silence_duration: Union[int, float] = 5) -> Tuple[Union[int, None], Union[int, None]]:
         """Set start_frame and end_frame based on silence detection"""
+        if not isinstance(self.ndarray, np.ndarray):
+            raise ValueError("Cannot get self.ndarray as ndarray. Set url or file path to Audio instance.")
         audio_data = np.abs(self.ndarray)
         non_silent_indices = np.where(audio_data > threshold)[0]
         if len(non_silent_indices) == 0:
@@ -109,11 +114,14 @@ class Audio:
         return self.start_frame, self.end_frame
 
 
-def decode_audio(audio, sampling_rate=16000):
+def decode_audio(audio, sampling_rate=16000) -> np.ndarray:
     """An alternative to faster_whisper.decode_audio(),
     addressing its high memory consumption."""
+    _stdout = decode_audio_pipe(audio, sampling_rate).stdout
+    if _stdout is None:
+        raise ValueError(f"Cannot decode audio {audio}")
     return np.frombuffer(
-        decode_audio_pipe(audio, sampling_rate).stdout.read(),
+        _stdout.read(),
         np.int16
         ).flatten().astype(np.float32) / 32768.0
 

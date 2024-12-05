@@ -1,25 +1,28 @@
 import time
+import sys
 import datetime
 from logging import getLogger
+from subprocess import Popen
 from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
 import numpy as np
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
-from IPython.display import display
 import ipywidgets as widgets
 from .speakersegment import SpeakerSegment, SpeakerSegmentList
 
 
 logger = getLogger(__name__)
 
+_Type_Prompt = Optional[Union[str, Iterable[int]]]
+
 def faster_whisper_transcribe(
     # model options
     model: Optional[FasterWhisperModel] = None,
 
     # transcribe options
-    audio: Union[str, BinaryIO] = "",
+    audio: Union[str, BinaryIO, np.ndarray] = "",
     language: Optional[str] = None,
     multilingual: bool = False,
-    initial_prompt: Optional[Union[str, Iterable[int]]] = None,
+    initial_prompt: _Type_Prompt = None,
     hotwords: Optional[str] = None,
     chunk_length: int = 30,
     batch_size: int = 16,
@@ -69,10 +72,10 @@ def faster_whisper_transcribe(
     return segments, info
 
 def realtime_transcribe(
-        process: "subprocess.Popen", # streaming process
+        process: Popen, # streaming process
         model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
-        initial_prompt: Optional[str] = None,
+        initial_prompt: _Type_Prompt = None,
     ) -> SpeakerSegmentList:
     ## TODO  make choppy transcription continuous one
     if model is None:
@@ -83,10 +86,7 @@ def realtime_transcribe(
         "w",
         encoding="utf-8"
     )
-    stop_button = widgets.Button(
-        description="Stop Transcribing",
-        style={'font_weight': 'bold'},
-    )
+
     stop_transcribing = False
 
     def _stop_button_clicked(b):
@@ -94,15 +94,21 @@ def realtime_transcribe(
         nonlocal stop_transcribing
         stop_transcribing = True
 
-    display(stop_button)
-    stop_button.on_click(_stop_button_clicked)
+    if 'IPython' in sys.modules:
+        display = sys.modules["IPython"].display
+        stop_button = widgets.Button(
+            description="Stop Transcribing",
+            style={'font_weight': 'bold'},
+        )
+        display.display(stop_button)
+        stop_button.on_click(_stop_button_clicked)
 
     def _realtime_asr_loop(
-        model,
+        model: FasterWhisperModel,
         data: bytes,
         outfh: TextIO,
-        initial_prompt: Optional[str] = None
-        ) -> SpeakerSegmentList:
+        initial_prompt: _Type_Prompt = None
+        ) -> Iterable:
         segments, _ =  model.transcribe(
             audio=np.frombuffer(data, np.int16).astype(np.float32) / 32768.0,
             language=language,
@@ -116,7 +122,11 @@ def realtime_transcribe(
 
     segments = SpeakerSegmentList()
     while not stop_transcribing:
-        audio_data = process.stdout.read(16000 * 2)
+        print(f"stop_transcribing: {stop_transcribing}")
+        if process.stdout is not None:
+            audio_data = process.stdout.read(16000 * 2)
+        else:
+            raise ValueError("process.stdout is None. Check your subprocess initialization.")
         if process.poll() is not None:
             segments += _realtime_asr_loop(model, buffer, fh1, initial_prompt)
             break
