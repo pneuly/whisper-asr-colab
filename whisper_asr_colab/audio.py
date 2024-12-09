@@ -26,12 +26,14 @@ class Audio:
     @property
     def ndarray(self) -> np.ndarray:
         if self._rawdata is None:
-            self._load_audio()
-        if self._rawdata is None:
-            raise ValueError("Failed to get audio data. Check if url or file path is correctly set.")
-        return self._rawdata[self.start_frame:self.end_frame]
+            _rawdata = self._load_audio()
+            return _rawdata[self.start_frame:self.end_frame]
+        else:
+            return self._rawdata[self.start_frame:self.end_frame]
 
-    def _load_audio(self) -> None:
+    def _load_audio(self) -> np.ndarray:
+        """Load audio to self._rawdata based on self.url or self.file_path.
+        Returns loaded audio data"""
         if self.file_path is None and self.url is None:
             raise ValueError("No url or file path set.")
         if self.file_path is None or not os.path.exists(self.file_path):
@@ -47,7 +49,11 @@ class Audio:
                 raise SystemExit
             else:
                 sys.exit(message)
-        self._rawdata = decode_audio(self.file_path, self.sampling_rate)
+        _rawdata = decode_audio(self.file_path, self.sampling_rate)
+        if not isinstance(_rawdata, np.ndarray):
+            raise ValueError("Failed to get audio data. Check if url or file path is correctly set.")
+        self._rawdata = _rawdata
+        return self._rawdata
 
     ## TODO  def write_data()
 
@@ -123,7 +129,11 @@ class Audio:
         sr = self.sampling_rate
         start_frame = int(start_sec * sr) if start_sec is not None else 0.0
         end_frame = int(end_sec * sr) if end_sec is not None else len(self.ndarray)
-        return self.ndarray[start_frame:end_frame]
+        if self._rawdata is None:
+            _rawdata = self._load_audio()
+            return _rawdata[start_frame:end_frame]
+        else:
+            return self._rawdata[start_frame:end_frame]
 
 
 def decode_audio(audio, sampling_rate=16000) -> np.ndarray:

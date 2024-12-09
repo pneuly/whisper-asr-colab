@@ -121,7 +121,6 @@ def realtime_transcribe(
 
     segments = []
     while not stop_transcribing:
-        print(f"stop_transcribing: {stop_transcribing}")
         if process.stdout is not None:
             audio_data = process.stdout.read(16000 * 2)
         else:
