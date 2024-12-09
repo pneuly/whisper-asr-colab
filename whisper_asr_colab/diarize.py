@@ -1,11 +1,11 @@
 import logging
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy
-from typing import Union, Optional, BinaryIO
+from typing import List, Union, Optional, BinaryIO
 from numpy import ndarray
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from .speakersegment import SpeakerSegment, SpeakerSegmentList
+from .speakersegment import SpeakerSegment
 
 class DiarizationPipeline:
     def __init__(
@@ -27,7 +27,7 @@ class DiarizationPipeline:
             audio: Union[str, ndarray, BinaryIO],
             min_duration_on=1.5,  # remove speech regions shorter than this seconds.
             min_duration_off=1.5,  # fill non-speech regions shorter than this seconds.
-            ) -> SpeakerSegmentList:
+            ) -> List[SpeakerSegment]:
         if isinstance(audio, ndarray):
             audio_data = {"waveform": from_numpy(audio[None, :]), "sample_rate": 16000}
         #elif isinstance(audio, str):
@@ -37,7 +37,7 @@ class DiarizationPipeline:
 
         self.pipeline.min_duration_on = min_duration_on
         self.pipeline.min_duration_off = min_duration_off
-        speaker_segments = SpeakerSegmentList()
+        speaker_segments = []
         with ProgressHook() as hook:
             for time_segment, _, speaker in self.pipeline(
                     audio_data, hook=hook,).itertracks(yield_label=True):
@@ -54,7 +54,7 @@ class DiarizationPipeline:
 def diarize(
         audio: Union[str, BinaryIO, ndarray],
         hugging_face_token: str,
-    ) -> SpeakerSegmentList:
+    ) -> List[SpeakerSegment]:
 
     diarize_model = DiarizationPipeline(use_auth_token=hugging_face_token)
     diarized_result = diarize_model(audio)

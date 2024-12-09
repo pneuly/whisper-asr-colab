@@ -1,8 +1,9 @@
 from whisper_asr_colab.asr import faster_whisper_transcribe
 from faster_whisper import WhisperModel as FasterWhisperModel
 from typing import Union
+from numpy import ndarray
 
-def perform_asr(audio:Union[str, "numpy.ndarray"], batch_size:int):
+def perform_asr(audio:Union[str, ndarray], batch_size:int):
     model = FasterWhisperModel("tiny")
     segments, info = faster_whisper_transcribe(
         model=model,

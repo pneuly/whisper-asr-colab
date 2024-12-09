@@ -3,23 +3,22 @@ import sys
 import datetime
 from logging import getLogger
 from subprocess import Popen
-from typing import Union, Optional, Iterable, TextIO, BinaryIO, Any
+from typing import Union, Optional, Iterable, TextIO, BinaryIO, List, Any
 import numpy as np
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 import ipywidgets as widgets
-from .speakersegment import SpeakerSegment, SpeakerSegmentList
+from .speakersegment import SpeakerSegment
 
 
 logger = getLogger(__name__)
 
 _Type_Prompt = Optional[Union[str, Iterable[int]]]
 
-def faster_whisper_transcribe(
-    # model options
-    model: Optional[FasterWhisperModel] = None,
+# TODO provide AsrOptions class
 
-    # transcribe options
-    audio: Union[str, BinaryIO, np.ndarray] = "",
+def faster_whisper_transcribe(
+    audio: Union[str, BinaryIO, np.ndarray],
+    model: Optional[FasterWhisperModel] = None,
     language: Optional[str] = None,
     multilingual: bool = False,
     initial_prompt: _Type_Prompt = None,
@@ -29,7 +28,7 @@ def faster_whisper_transcribe(
     prefix: Optional[str] = None,
     vad_filter: bool = False,
     log_progress: bool = False,
-    ) -> tuple[SpeakerSegmentList, Any]:
+    ) -> tuple[List[SpeakerSegment], Any]:
 
     logger.debug(f"batich_size: {batch_size}")
     if model is None:
@@ -64,7 +63,7 @@ def faster_whisper_transcribe(
             condition_on_previous_text=False, # supress hallucination and repetitive text
             without_timestamps=False,
         )
-    segments = SpeakerSegmentList()
+    segments = []
     for segment in segments_generator:
         print(segment.text)
         segments.append(SpeakerSegment.from_segment(segment))
@@ -76,7 +75,7 @@ def realtime_transcribe(
         model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
         initial_prompt: _Type_Prompt = None,
-    ) -> SpeakerSegmentList:
+    ) -> List[SpeakerSegment]:
     ## TODO  make choppy transcription continuous one
     if model is None:
         model = FasterWhisperModel("large-v3-turbo")
@@ -120,7 +119,7 @@ def realtime_transcribe(
             outfh.flush()
         return segments
 
-    segments = SpeakerSegmentList()
+    segments = []
     while not stop_transcribing:
         print(f"stop_transcribing: {stop_transcribing}")
         if process.stdout is not None:
@@ -138,4 +137,4 @@ def realtime_transcribe(
         else:
             time.sleep(0.1)
     fh1.close()
-    return SpeakerSegmentList(*[SpeakerSegment.from_segment(segment) for segment in segments])
+    return [SpeakerSegment.from_segment(segment) for segment in segments]

@@ -24,10 +24,12 @@ class Audio:
 
 
     @property
-    def ndarray(self) -> Union[np.ndarray,None]:
+    def ndarray(self) -> np.ndarray:
         if self._rawdata is None:
             self._load_audio()
-        return self._rawdata[self.start_frame:self.end_frame] # type: ignore
+        if self._rawdata is None:
+            raise ValueError("Failed to get audio data. Check if url or file path is correctly set.")
+        return self._rawdata[self.start_frame:self.end_frame]
 
     def _load_audio(self) -> None:
         if self.file_path is None and self.url is None:
@@ -112,6 +114,16 @@ class Audio:
             print(f"Trailing silence detected. Skipping the last {trailing_sec} seconds.")
             self.end_frame = int(trailing) + 1
         return self.start_frame, self.end_frame
+
+
+    def get_time_slice(
+            self,
+            start_sec:Union[int, float, None] = None,
+            end_sec:Union[int, float, None] = None) -> np.ndarray:
+        sr = self.sampling_rate
+        start_frame = int(start_sec * sr) if start_sec is not None else 0.0
+        end_frame = int(end_sec * sr) if end_sec is not None else len(self.ndarray)
+        return self.ndarray[start_frame:end_frame]
 
 
 def decode_audio(audio, sampling_rate=16000) -> np.ndarray:

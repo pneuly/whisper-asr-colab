@@ -2,7 +2,7 @@ import gc
 from torch.cuda import empty_cache
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Union, Iterable, Tuple, Any
+from typing import Optional, Union, Iterable, Tuple, List, Any
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
@@ -10,7 +10,7 @@ from .audio import Audio
 from .utils import download_from_colab
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
-from .speakersegment import SpeakerSegment, SpeakerSegmentList
+from .speakersegment import SpeakerSegment, assign_speakers, combine, combine_same_speakers, write_result
 
 
 @dataclass
@@ -41,8 +41,8 @@ class Worker:
     skip_silence: bool = True  # If True, skip the leading silence of the audio
 
     #result data
-    asr_segments: Optional[SpeakerSegmentList] = None  # result from whisper
-    diarized_segments: Optional[SpeakerSegmentList] = None  # result from pyannote
+    asr_segments: Optional[List[SpeakerSegment]] = None  # result from whisper
+    diarized_segments: Optional[List[SpeakerSegment]] = None  # result from pyannote
 
 
     def __post_init__(self):
@@ -64,7 +64,7 @@ class Worker:
 #        i_end = len(self._audio_data) if not end_time else int(end_time * sr)
 #        return self._audio_data[i_start:i_end]
 
-    def transcribe(self) -> SpeakerSegmentList:
+    def transcribe(self) -> List[SpeakerSegment]:
         """Wrapper for faster-whisper transcription.
         Automatically sets the inference if not explicitly specified.
         Switches between normal transcription and real-time transcription based on the value of `self.realtime`.
@@ -85,12 +85,11 @@ class Worker:
                 initial_prompt = self.initial_prompt
             )
         else:  # normal transcription
-            print(f"Transcribing from {self.audio.start_time if self.audio.start_time else 'start'}")
             segments, _ = self.call_faster_whisper_transcribe()
         return segments
 
 
-    def transcribe_segmented(self) -> SpeakerSegmentList:
+    def transcribe_segmented(self) -> List[SpeakerSegment]:
         """Transcribe each diarized segment separately. Called by run2()"""
         print("Transcribing each segment...")
         if self.model is None:
@@ -100,21 +99,23 @@ class Worker:
                     compute_type="default",
                 )
 
-        def _transcribe_and_add_speakers(speakerseg: SpeakerSegment) -> SpeakerSegmentList:
-            _asr_result = SpeakerSegmentList()
-            segments, _ = self.call_faster_whisper_transcribe()
+        def _transcribe_and_add_speakers(speakerseg: SpeakerSegment) -> List[SpeakerSegment]:
+            _asr_result = []
+            segments, _ = self.call_faster_whisper_transcribe(
+                start_time=speakerseg.start,
+                end_time=speakerseg.end)
             if segments:
-                segment = segments.combined
+                segment = combine(segments)
                 segment.speaker = speakerseg.speaker
                 _asr_result.append(segment)
             return _asr_result
 
-        asr_result = SpeakerSegmentList()
+        asr_result = []
         with ThreadPoolExecutor() as executor:
             if self.diarized_segments is not None:
-                speakersegs = self.diarized_segments.combine_same_speakers()
+                combine_same_speakers(self.diarized_segments)
                 procs = []
-                for seg in speakersegs:
+                for seg in self.diarized_segments:
                     procs.append(executor.submit(_transcribe_and_add_speakers, seg))
                 executor.shutdown(wait=True)
                 for proc in procs:
@@ -124,13 +125,19 @@ class Worker:
         return asr_result
 
 
-    def call_faster_whisper_transcribe(self) -> Tuple[SpeakerSegmentList, Any]:
+    def call_faster_whisper_transcribe(
+            self,
+            start_time: Union[int, float, None] = None,
+            end_time: Union[int, float, None] = None,) -> Tuple[List[SpeakerSegment], Any]:
         """Commonly used by `transcribe()` and `transcribe_segmented().`
         """
         if self.audio.ndarray is None:
             raise ValueError("Audio must be set in worker.audio.")
+        _start = start_time if start_time else self.audio.start_time
+        _end = end_time if end_time else self.audio.end_time
+        print(f"Transcribing from {_start} to {_end}")
         segments, _ = faster_whisper_transcribe(
-                audio=self.audio.ndarray,
+                audio=self.audio.get_time_slice(_start, _end),
                 model=self.model,
                 language = self.language,
                 multilingual=self.multilingual,
@@ -141,10 +148,9 @@ class Worker:
                 #chunk_length=self.chunk_length,
                 batch_size=self.batch_size,
             )
-        start_time = self.audio.start_time
-        if segments and start_time:
+        if segments and _start:
             for item in segments:
-                item.shift_time(start_time)
+                item.shift_time(_start)
         return segments, _
 
 
@@ -166,12 +172,14 @@ class Worker:
             outfilename = self.audio.file_path
         else:
             outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return speaker_segments.write_result(
+        return write_result(
+            speaker_segments,
             outfilename,
             with_speakers,
             self.timestamp_offset if self.timestamp_offset else 0.0
         )
 
+    # TODO run asr and diarization simultaneously (Threading)
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
@@ -186,8 +194,10 @@ class Worker:
 
         if self.diarization:
             self.diarized_segments = self.diarize()
-            self.diarized_segments = self.asr_segments.assign_speakers(
-                diarization_result=self.diarized_segments
+            self.diarized_segments = assign_speakers(
+                asr_segments=self.asr_segments,
+                diarization_result=self.diarized_segments,
+                postprocesses=(combine_same_speakers,),
             )
 
             print("Writing result...")
