@@ -110,7 +110,7 @@ def assign_speakers(
     for asr_seg in asr_segments:
         while i <= dia_segments_size:
             dia_seg = diarization_result[i]
-            logger.debug(f"i:{i} speaker:{dia_seg.speaker} dia_seg.start:{dia_seg.start} dia_seg.end:{dia_seg.end}")
+            logger.debug(f"i:{i} speaker:{dia_seg.speaker} dia_seg.start:{dia_seg.start:.2f} dia_seg.end:{dia_seg.end:.2f}")
             if asr_seg.end < dia_seg.start:  # run out of the target segment
                 break
             # calc overlap duration of asr and diarization

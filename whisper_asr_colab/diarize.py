@@ -1,4 +1,5 @@
 import logging
+import warnings
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy
 from typing import List, Union, Optional, BinaryIO
@@ -58,5 +59,5 @@ def diarize(
 
     diarize_model = DiarizationPipeline(use_auth_token=hugging_face_token)
     diarized_result = diarize_model(audio)
-    logging.info(f"diarized_result: {diarized_result}")
+    logging.debug(f"diarized_result: {diarized_result}")
     return diarized_result

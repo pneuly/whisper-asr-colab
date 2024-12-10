@@ -1,4 +1,5 @@
 import gc
+import logging
 from torch.cuda import empty_cache
 from datetime import datetime
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
 from .speakersegment import SpeakerSegment, assign_speakers, combine, combine_same_speakers, write_result
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Worker:
@@ -51,7 +53,7 @@ class Worker:
         if self.password:
             self.audio.password = self.password
         if self.realtime:
-            print("`skip_silence` is disabled since `realtime` mode is enabled.")
+            logger.info("`skip_silence` is disabled since `realtime` mode is enabled.")
             self.skip_silence = False
         if self.skip_silence:
             self.audio.set_silence_skip()
@@ -77,7 +79,7 @@ class Worker:
                     compute_type="default",
                 )
         if self.realtime: # realtime trascription
-            print("Transcribing on the fly...")
+            logger.info("Transcribing on the fly...")
             segments = realtime_transcribe(
                 process=self.audio.live_stream,
                 model=self.model,
@@ -91,7 +93,7 @@ class Worker:
 
     def transcribe_segmented(self) -> List[SpeakerSegment]:
         """Transcribe each diarized segment separately. Called by run2()"""
-        print("Transcribing each segment...")
+        logger.info("Transcribing each segment...")
         if self.model is None:
             self.model = FasterWhisperModel(
                     self.model_size,
@@ -135,7 +137,7 @@ class Worker:
             raise ValueError("Audio must be set in worker.audio.")
         _start = start_time if start_time else self.audio.start_time
         _end = end_time if end_time else self.audio.end_time
-        print(f"Transcribing from {_start} to {_end}")
+        logger.info(f"Transcribing from {_start} to {_end}")
         segments, _ = faster_whisper_transcribe(
                 audio=self.audio.get_time_slice(_start, _end),
                 model=self.model,
@@ -155,7 +157,7 @@ class Worker:
 
 
     def diarize(self):
-        print("Diarizing...")
+        logger.debug("Diarizing.")
         if self.audio.ndarray is None:
             raise ValueError("Audio must be specified in worker.audio.")
         segments = _diarize(
@@ -183,8 +185,9 @@ class Worker:
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
+        print("Transcribing.")
         self.asr_segments = self.transcribe()
-        print("Writing result...")
+        print("Writing ASR result.")
         outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
 
@@ -193,6 +196,7 @@ class Worker:
         gc.collect()
 
         if self.diarization:
+            print("Diarizing.")
             self.diarized_segments = self.diarize()
             self.diarized_segments = assign_speakers(
                 asr_segments=self.asr_segments,
@@ -200,14 +204,14 @@ class Worker:
                 postprocesses=(combine_same_speakers,),
             )
 
-            print("Writing result...")
+            print("Writing diarization result.")
             diarized_txt = self._write_result(self.diarized_segments, with_speakers=True)[0]
 
             files_to_download.append(diarized_txt)
 
             empty_cache()
 
-            print("Writing to docx...")
+            print("Writing to docx.")
             doc = DocxGenerator()
             doc.txt_to_word(diarized_txt)
             print(f"Downloading {doc.docfilename}")
@@ -224,21 +228,21 @@ class Worker:
     def run2(self):
         """Similar to run(), but diarize first and ASR for each diarized segment"""
         files_to_download = []
-
+        print("Diarizing.")
         self.diarized_segments = self.diarize()
         self.asr_segments = self.transcribe_segmented()
 
-        print("Writing asr result...")
+        print("Writing ASR result.")
         outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
 
-        print("Writing dia result...")
+        print("Writing diarizing result.")
         diarized_txt = self._write_result(self.asr_segments, with_speakers=True)[0]
         files_to_download.append(diarized_txt)
 
         empty_cache()
 
-        print("Writing to docx...")
+        print("Writing to docx.")
         doc = DocxGenerator()
         doc.txt_to_word(diarized_txt)
         print(f"Downloading {doc.docfilename}")
