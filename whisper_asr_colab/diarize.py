@@ -7,6 +7,8 @@ from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
 from .speakersegment import SpeakerSegment
 
+logger = logging.getLogger(__name__)
+
 class DiarizationPipeline:
     def __init__(
         self,
@@ -58,5 +60,6 @@ def diarize(
 
     diarize_model = DiarizationPipeline(use_auth_token=hugging_face_token)
     diarized_result = diarize_model(audio)
-    logging.info(f"diarized_result: {diarized_result}")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"diarized_result: {diarized_result}")
     return diarized_result

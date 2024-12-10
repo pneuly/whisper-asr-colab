@@ -1,5 +1,6 @@
 import sys
 import re
+from typing import Tuple
 
 def str2seconds(time_str: str) -> float:
     """Convert a time string (hh:mm:ss) to seconds."""
@@ -11,13 +12,18 @@ def str2seconds(time_str: str) -> float:
         in enumerate(parts[::-1]))
 
 
-def format_timestamp(seconds: float) -> str:
+def seconds_to_tuple(seconds: float) -> Tuple[int, int, float]:
+    _h = int(seconds // 3600)
+    _remain = seconds - (_h * 3600)
+    _m = int(_remain // 60)
+    _s = _remain - (_m * 60)
+    return _h, _m, _s
+
+
+def format_timestamp(seconds: float, sec_format: str = "05.2f") -> str:
     """Format seconds into a string 'H:MM:SS.ss'."""
-    hours = seconds // 3600
-    remain = seconds - (hours * 3600)
-    minutes = remain // 60
-    seconds = remain - (minutes * 60)
-    return "{:01}:{:02}:{:05.2f}".format(int(hours), int(minutes), seconds)
+    _h, _m ,_s = seconds_to_tuple(seconds)
+    return f"{_h:01}:{_m:02}:{_s:{sec_format}}"
 
 
 def download_from_colab(filepath: str):

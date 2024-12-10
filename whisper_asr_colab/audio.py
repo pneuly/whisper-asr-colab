@@ -2,6 +2,7 @@ import sys
 import re
 import os
 import time
+import logging
 import warnings
 import subprocess
 import ffmpeg
@@ -10,6 +11,7 @@ from typing import Union, Optional, Tuple
 from dataclasses import dataclass
 from .utils import sanitize_filename, str2seconds
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Audio:
@@ -38,7 +40,7 @@ class Audio:
             raise ValueError("No url or file path set.")
         if self.file_path is None or not os.path.exists(self.file_path):
             self.file_path = dl_audio(self.url, self.password) # type: ignore
-        print(f"Loading audio file {self.file_path}")
+        logger.info(f"Loading audio file {self.file_path}")
         if self.verify_upload and not is_upload_complete(self.file_path):
             message = f"Uploaing {self.file_path} seems incomplete. Run again after the upload is finished."
             if 'IPython' in sys.modules:
@@ -106,18 +108,18 @@ class Audio:
         audio_data = np.abs(self.ndarray)
         non_silent_indices = np.where(audio_data > threshold)[0]
         if len(non_silent_indices) == 0:
-            print("Entire signal is silent!")
+            logger.warning("Entire audio signal is silent!")
             return None, None
         leading = non_silent_indices[0]
         trailing = non_silent_indices[-1]
         min_frame_size = int(min_silence_duration * self.sampling_rate)
         if (not self.start_frame) and (leading > min_frame_size):
-            print(f"Leading silence detected. Skipping {int(leading / self.sampling_rate)} seconds.")
+            logger.info(f"Leading silence detected. Skipping {leading / self.sampling_rate} seconds.")
             self.start_frame = int(leading)
         frame_size = len(self.ndarray)
         if (not self.end_frame) and (trailing < frame_size) and (trailing + min_frame_size < frame_size):
-            trailing_sec = int((frame_size - trailing)/ self.sampling_rate)
-            print(f"Trailing silence detected. Skipping the last {trailing_sec} seconds.")
+            trailing_sec = (frame_size - trailing)/ self.sampling_rate
+            logger.info(f"Trailing silence detected. Skipping the last {trailing_sec} seconds.")
             self.end_frame = int(trailing) + 1
         return self.start_frame, self.end_frame
 
@@ -148,6 +150,8 @@ def decode_audio(audio, sampling_rate=16000) -> np.ndarray:
         ).flatten().astype(np.float32) / 32768.0
 
 def decode_audio_pipe(audio: str, sampling_rate: int = 16000):
+    """Returns audio as Popen instance.
+    Audio can be internet url (any uri that ffmpeg can parse)."""
     return subprocess.Popen(
         [
             "ffmpeg",
@@ -167,7 +171,7 @@ def decode_audio_pipe(audio: str, sampling_rate: int = 16000):
 
 def dl_audio(url: str, password: Optional[str] = None):
     """Download file from Internet"""
-    print(f"Downloading audio from {url}")
+    logger.info(f"Downloading audio from {url}")
     # YoutubeDL class causes download errors, using external command instead
     options = ["-x", "-S", "+acodec:mp4a", "-o", "%(title)s.%(ext)s"]
     if password:
@@ -251,7 +255,7 @@ def trim_audio(
         input = ffmpeg.input(audiopath, ss=start_time)
     input_base, input_ext = os.path.splitext(audiopath)
     input_path = f"{input_base}_{sanitize_filename(start_time)}_{sanitize_filename(end_time)}{input_ext}"
-    print(f"Trimming audio from {start_time} to {end_time}.")
+    logger.info(f"Trimming audio from {start_time} to {end_time}.")
     ffmpeg.output(input, input_path, acodec="copy", vcodec="copy").run(
             overwrite_output=True
             )

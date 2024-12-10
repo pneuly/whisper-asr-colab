@@ -1,13 +1,14 @@
 import time
 import sys
 import datetime
-from logging import getLogger
+from logging import getLogger, DEBUG
 from subprocess import Popen
 from typing import Union, Optional, Iterable, TextIO, BinaryIO, List, Any
 import numpy as np
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 import ipywidgets as widgets
 from .speakersegment import SpeakerSegment
+from .utils import format_timestamp
 
 
 logger = getLogger(__name__)
@@ -30,6 +31,7 @@ def faster_whisper_transcribe(
     log_progress: bool = False,
     ) -> tuple[List[SpeakerSegment], Any]:
 
+    logger.debug(f"VAD filter: {vad_filter}")
     logger.debug(f"batich_size: {batch_size}")
     if model is None:
         model = FasterWhisperModel(
@@ -51,7 +53,7 @@ def faster_whisper_transcribe(
             log_progress=log_progress,
         )
     else: # sequential mode
-        logger.info(f"batch_size is set to less than 2. ({batch_size}). Using equential mode.")
+        logger.info(f"batch_size is set to less than 2. ({batch_size}). Using sequential mode.")
         segments_generator, info = model.transcribe(
             audio=audio,
             language=language,
@@ -65,9 +67,10 @@ def faster_whisper_transcribe(
         )
     segments = []
     for segment in segments_generator:
-        print(segment.text)
+        print(f"[{format_timestamp(segment.start, '02.0f')} - {format_timestamp(segment.end, '02.0f')}] {segment.text}")
         segments.append(SpeakerSegment.from_segment(segment))
-    logger.info(f"Transcribed segments:\n{segments}")
+    if logger.isEnabledFor(DEBUG):
+        logger.debug(f"Transcribed segments:\n{segments}")
     return segments, info
 
 def realtime_transcribe(
@@ -76,7 +79,12 @@ def realtime_transcribe(
         language: Optional[str] = None,
         initial_prompt: _Type_Prompt = None,
     ) -> List[SpeakerSegment]:
-    ## TODO  make choppy transcription continuous one
+    ## TODO: Improve real-time transcription quality.
+    ## The current code handles the audio every 30 seconds, which harms transcription quality.
+    ## Possible improvements:
+    ## - Read audio stream and store into ndarray
+    ## - Read audio chunk from ndarray and input the data into WhisperModel.generate_segments
+    ## - The remaining data from the previous audio chunk should be carried over to the next chunk
     if model is None:
         model = FasterWhisperModel("large-v3-turbo")
     buffer = b""
@@ -87,9 +95,8 @@ def realtime_transcribe(
     )
 
     stop_transcribing = False
-    # TODO Use logger instead of print
     def _stop_button_clicked(b):
-        print(f"Stop button is clicked. {b}")
+        logger.warning(f"Stop button is clicked. {b}")
         nonlocal stop_transcribing
         stop_transcribing = True
 
@@ -114,7 +121,7 @@ def realtime_transcribe(
             initial_prompt=initial_prompt
             )
         for segment in segments:
-            print(segment.text)
+            print(f"[{segment.start} - {segment.end}]{segment.text}")
             outfh.write(segment.text + "\n")
             outfh.flush()
         return segments
