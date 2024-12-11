@@ -58,13 +58,6 @@ class Worker:
         if self.skip_silence:
             self.audio.set_silence_skip()
 
-#    def get_audio_slice(self,
-#                         start_time: Optional[Union[int, float]] = None,
-#                         end_time: Optional[Union[int, float]] = None):
-#        sr = self.model.feature_extractor.sampling_rate if self.model else 16000
-#        i_start = 0 if not start_time else int(start_time * sr)
-#        i_end = len(self._audio_data) if not end_time else int(end_time * sr)
-#        return self._audio_data[i_start:i_end]
 
     def transcribe(self) -> List[SpeakerSegment]:
         """Wrapper for faster-whisper transcription.
@@ -182,6 +175,7 @@ class Worker:
         )
 
     # TODO run asr and diarization simultaneously (Threading)
+    # TODO run download processes (audio, model and others) simultaneously
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
