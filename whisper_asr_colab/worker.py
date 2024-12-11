@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
 from .audio import Audio
-from .utils import download_from_colab
+from .utils import download_from_colab, str2seconds
 from .asr import faster_whisper_transcribe, realtime_transcribe
 from .diarize import diarize as _diarize
 from .speakersegment import SpeakerSegment, assign_speakers, combine, combine_same_speakers, write_result
@@ -38,13 +38,23 @@ class Worker:
     diarization: bool = True
     hugging_face_token: str = ""
     password: str = ""
-    timestamp_offset: float = 0.0
     realtime: bool = False
     skip_silence: bool = True  # If True, skip the leading silence of the audio
+    _timestamp_offset: float = 0.0
 
     #result data
     asr_segments: Optional[List[SpeakerSegment]] = None  # result from whisper
     diarized_segments: Optional[List[SpeakerSegment]] = None  # result from pyannote
+
+    @property
+    def timestamp_offset(self) -> float:
+        return self._timestamp_offset
+
+    @timestamp_offset.setter
+    def timestamp_offset(self, sec : Union[str, int, float]):
+        if isinstance(sec, str):
+            sec = str2seconds(sec)
+        self._timestamp_offset = sec
 
 
     def __post_init__(self):

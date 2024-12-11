@@ -14,13 +14,14 @@ The main functions of this package are as follows:
 Open [whisper_asr_colab.ipynb](https://github.com/pneuly/whisper-asr-colab/blob/main/whisper_asr_colab.ipynb) on Google Colab or use the modules as shown below.
 ```python
 from whisper_asr_colab.worker import Worker
+from whisper_asr_colab.audio import Audio
 
 audio = "audiofile.m4a"
 model_size = "turbo"
 hf_token = "your hf token"
 
 worker = Worker(
-    audio=audio,
+    audio=Audio.from_path_or_url(audio),
     model_size=model_size,
     hugging_face_token=hf_token,
 )
