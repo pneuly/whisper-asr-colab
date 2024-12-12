@@ -10,7 +10,7 @@ from .docx_generator import DocxGenerator
 from .audio import Audio
 from .utils import download_from_colab, str2seconds
 from .asr import faster_whisper_transcribe, realtime_transcribe
-from .diarize import diarize as _diarize
+from .diarize import DiarizationPipeline
 from .speakersegment import SpeakerSegment, assign_speakers, combine, combine_same_speakers, write_result
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,8 @@ class Worker:
             )
         else:  # normal transcription
             segments, _ = self.call_faster_whisper_transcribe()
-        return segments
+        self.asr_segments = segments
+        return self.asr_segments
 
 
     def transcribe_segmented(self) -> List[SpeakerSegment]:
@@ -127,7 +128,8 @@ class Worker:
                     result = proc.result()
                     if result:
                         asr_result.extend(result)
-        return asr_result
+        self.asr_segments = asr_result
+        return self.asr_segments
 
 
     def call_faster_whisper_transcribe(
@@ -159,18 +161,20 @@ class Worker:
         return segments, _
 
 
-    def diarize(self):
+    def diarize(self, show_progress=True) -> List[SpeakerSegment]:
         logger.debug("Diarizing.")
         if self.audio.ndarray is None:
             raise ValueError("Audio must be specified in worker.audio.")
-        segments = _diarize(
+        dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token)
+        segments = dpipe(
             audio=self.audio.ndarray,
-            hugging_face_token=self.hugging_face_token,
+            show_progress=show_progress,
         )
         if segments and self.audio.start_time:
             for item in segments:
                 item.shift_time(self.audio.start_time)
-        return segments
+        self.diarized_segments = segments
+        return self.diarized_segments
 
     def _write_result(self, speaker_segments, with_speakers=False):
         if isinstance(self.audio.file_path, str):
@@ -186,11 +190,12 @@ class Worker:
 
     # TODO run asr and diarization simultaneously (Threading)
     # TODO run download processes (audio, model and others) simultaneously
+    # TODO minimize log output to screen
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
         print("Transcribing.")
-        self.asr_segments = self.transcribe()
+        self.transcribe()
         print("Writing ASR result.")
         outfiles = self._write_result(self.asr_segments)
         files_to_download.extend(outfiles)
@@ -201,7 +206,11 @@ class Worker:
 
         if self.diarization:
             print("Diarizing.")
-            self.diarized_segments = self.diarize()
+            self.diarize()
+            if not self.asr_segments:
+                raise ValueError("self.asr_segments is empty.")
+            if not self.diarized_segments:
+                raise ValueError("self.diarized_segments is empty.")
             self.diarized_segments = assign_speakers(
                 asr_segments=self.asr_segments,
                 diarization_result=self.diarized_segments,
@@ -210,10 +219,7 @@ class Worker:
 
             print("Writing diarization result.")
             diarized_txt = self._write_result(self.diarized_segments, with_speakers=True)[0]
-
             files_to_download.append(diarized_txt)
-
-            empty_cache()
 
             print("Writing to docx.")
             doc = DocxGenerator()
@@ -233,8 +239,9 @@ class Worker:
         """Similar to run(), but diarize first and ASR for each diarized segment"""
         files_to_download = []
         print("Diarizing.")
-        self.diarized_segments = self.diarize()
-        self.asr_segments = self.transcribe_segmented()
+        self.diarize()
+        print("Transcribing.")
+        self.transcribe_segmented()
 
         print("Writing ASR result.")
         outfiles = self._write_result(self.asr_segments)
@@ -243,8 +250,6 @@ class Worker:
         print("Writing diarizing result.")
         diarized_txt = self._write_result(self.asr_segments, with_speakers=True)[0]
         files_to_download.append(diarized_txt)
-
-        empty_cache()
 
         print("Writing to docx.")
         doc = DocxGenerator()
@@ -256,6 +261,41 @@ class Worker:
         if not self.audio.url:
             files_to_download.append(self.audio.file_path)
 
+        for file in files_to_download:
+            print(f"Downloading {file}")
+            download_from_colab(file)
+
+    def parallel_transcribe_diarize(self):
+        print("Transcribing and diarizing in parallel.")
+        files_to_download = []
+        # TODO Parallel execution shouled be triggered after feature extraction.
+        # Running out of memory may happen since
+        # faster_whisper.WhisperModel.feature_extractor requires large memory.
+        with ThreadPoolExecutor() as executor:
+            proc_transcribe = executor.submit(self.transcribe)
+            proc_diarize = executor.submit(self.diarize, show_progress=False)
+            executor.shutdown(wait=True)
+        self.asr_segments = proc_transcribe.result()
+        self.diarized_segments = assign_speakers(
+            asr_segments=self.asr_segments,
+            diarization_result=proc_diarize.result(),
+            postprocesses=(combine_same_speakers,),
+        )
+
+        print("Writing results.")
+        outfiles = self._write_result(self.asr_segments)
+        files_to_download.extend(outfiles)
+        diarized_txt = self._write_result(self.diarized_segments, with_speakers=True)[0]
+        files_to_download.append(diarized_txt)
+
+        print("Writing to docx.")
+        doc = DocxGenerator()
+        doc.txt_to_word(diarized_txt)
+        files_to_download.append(doc.docfilename)
+
+        # Add audio file to files to download if needed
+        if self.audio.url:
+            files_to_download.append(self.audio.file_path)
         for file in files_to_download:
             print(f"Downloading {file}")
             download_from_colab(file)
