@@ -14,38 +14,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      #- name: Install uv
-      #  uses: astral-sh/setup-uv@v4
-      #  with:
-      #    enable-cache: true
-      #    cache-dependency-glob: "**/pyproject.toml"
-      #    python-version: "3.10"
-
-      - name: "Set up Python"
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
       - name: Install FFmpeg
         run: |
           sudo apt update
           sudo apt install -y ffmpeg
 
-#      - name: Install numba
-#        run: uv add "numba>=0.54" "ctranslate2==4.4.0" --dev
-
-      - name: Install the project
+      - name: Install module
         run: |
-          sudo pip install uv
-          uv pip install --system .
-#          uv add "ctranslate2==4.4.0" --dev
+          pip install .
+          pip install pytest ipython ipywidgets ctranslate2==4.4.0
 
       - name: Run pytest
-#        env:
-#          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          uv tool install pytest
-          pytest tests
+          pytest -v tests/test_asr.py
+          pytest -v tests/test_diarize.py
+          pytest -v tests/test_docx_generator.py
+
+#
+#- name: Install uv
+#  uses: astral-sh/setup-uv@v4
+#  with:
+#    enable-cache: true
+#    cache-dependency-glob: "**/pyproject.toml"
+#    python-version: "3.10"
+#
+#      - name: Install numba
+#        run: uv add "numba>=0.54" "ctranslate2==4.4.0" --dev
+#
 #        run: |
 #          pytest -v tests/test_asr.py
 #          pytest -v tests/test_diarize.py
