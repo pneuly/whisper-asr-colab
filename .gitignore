@@ -2,6 +2,7 @@ whisper_asr_colab/_version.py
 try*
 .vscode
 .pre-commit-config.yaml
+uv.lock
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

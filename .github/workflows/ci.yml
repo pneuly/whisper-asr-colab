@@ -14,26 +14,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          enable-cache: true
+          python-version: "3.10"
+          cache-dependency-glob: |
+            **/pyproject.toml
+            **/uv.lock
 
       - name: Install FFmpeg
         run: |
-          sudo apt update
-          sudo apt install -y ffmpeg
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Install module
-        run: |
-          pip install .
-          pip install pytest ipython ipywidgets ctranslate2==4.4.0
+        run: uv add --dev pytest ipython ipywidgets
 
       - name: Run pytest
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          pytest -v tests/test_asr.py
-          pytest -v tests/test_diarize.py
-          pytest -v tests/test_docx_generator.py
+        run: uv run pytest tests

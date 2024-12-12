@@ -25,7 +25,7 @@ def faster_whisper_transcribe(
     initial_prompt: _Type_Prompt = None,
     hotwords: Optional[str] = None,
     chunk_length: int = 30,
-    batch_size: int = 16,
+    batch_size: int = 1,
     prefix: Optional[str] = None,
     vad_filter: bool = False,
     log_progress: bool = False,

@@ -188,8 +188,7 @@ class Worker:
             self.timestamp_offset if self.timestamp_offset else 0.0
         )
 
-    # TODO run asr and diarization simultaneously (Threading)
-    # TODO run download processes (audio, model and others) simultaneously
+    # TODO run upload/download processes (audio, model and others) simultaneously
     # TODO minimize log output to screen
     def run(self):
         """Wrapper for ASR and diarization"""
