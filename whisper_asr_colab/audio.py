@@ -5,11 +5,10 @@ import time
 import logging
 import warnings
 import subprocess
-import ffmpeg
 import numpy as np
 from typing import Union, Optional, Tuple
 from dataclasses import dataclass
-from .utils import sanitize_filename, str2seconds
+from .utils import str2seconds
 
 logger = logging.getLogger(__name__)
 
@@ -239,24 +238,3 @@ def get_silence_duration(audio_file) -> float:
     if len(result) > 0 and "silence_start: 0" in result[0]:
         silence_duration = float(result[1].split()[-1])
     return silence_duration
-
-def trim_audio(
-        audiopath: str,
-        start_time: Union[str, int, float] = "",
-        end_time: Union[str, int, float] = ""
-    ):
-    start_time = str(start_time)
-    end_time = str(end_time)
-    if start_time and end_time:
-        input = ffmpeg.input(audiopath, ss=start_time, to=end_time)
-    elif not start_time and end_time:
-        input = ffmpeg.input(audiopath, to=end_time)
-    else:
-        input = ffmpeg.input(audiopath, ss=start_time)
-    input_base, input_ext = os.path.splitext(audiopath)
-    input_path = f"{input_base}_{sanitize_filename(start_time)}_{sanitize_filename(end_time)}{input_ext}"
-    logger.info(f"Trimming audio from {start_time} to {end_time}.")
-    ffmpeg.output(input, input_path, acodec="copy", vcodec="copy").run(
-            overwrite_output=True
-            )
-    return input_path
