@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Optional, Union, Iterable, Tuple, List, Any
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
+from faster_whisper.feature_extractor import FeatureExtractor
+import numpy as np
 from .docx_generator import DocxGenerator
 from .audio import Audio
 from .utils import download_from_colab, str2seconds
@@ -190,6 +192,7 @@ class Worker:
 
     # TODO run upload/download processes (audio, model and others) simultaneously
     # TODO minimize log output to screen
+    # TODO calc execution time
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
@@ -264,12 +267,20 @@ class Worker:
             print(f"Downloading {file}")
             download_from_colab(file)
 
+
     def parallel_transcribe_diarize(self):
-        print("Transcribing and diarizing in parallel.")
         files_to_download = []
-        # TODO Parallel execution shouled be triggered after feature extraction.
-        # Running out of memory may happen since
-        # faster_whisper.WhisperModel.feature_extractor requires large memory.
+        print("Calculating audio feature.")
+        if self.model is None:
+            self.model = FasterWhisperModel(
+                    self.model_size,
+                    device=self.device,
+                    compute_type="default",
+                )
+        feature = self.model.feature_extractor(self.audio.ndarray)
+        self.model.feature_extractor.__call__ = lambda audio, chunk_length: feature
+
+        print("Transcribing and diarizing in parallel.")
         with ThreadPoolExecutor() as executor:
             proc_transcribe = executor.submit(self.transcribe)
             proc_diarize = executor.submit(self.diarize, show_progress=False)
