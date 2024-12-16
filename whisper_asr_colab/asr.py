@@ -53,7 +53,7 @@ def faster_whisper_transcribe(
             log_progress=log_progress,
         )
     else: # sequential mode
-        logger.info(f"batch_size is set to less than 2. ({batch_size}). Using sequential mode.")
+        logger.info(f"batch_size is set to less than 2 (batch_size={batch_size}). Using sequential mode.")
         segments_generator, info = model.transcribe(
             audio=audio,
             language=language,

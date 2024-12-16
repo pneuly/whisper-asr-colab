@@ -1,5 +1,6 @@
 import sys
 import re
+import time
 from typing import Tuple
 
 def str2seconds(time_str: str) -> float:
@@ -31,6 +32,7 @@ def download_from_colab(filepath: str):
     #if str(get_ipython()).startswith("<google.colab."):
     if "google.colab" in sys.modules:
         sys.modules["google.colab"].files.download(filepath)
+
 
 def sanitize_filename(filename, replacement="_"):
     invalid_chars = r'[<>:"/\\|?*\x00-\x1F]'
