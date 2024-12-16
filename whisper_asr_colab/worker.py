@@ -165,6 +165,17 @@ class Worker:
         return segments, _
 
 
+    def extract_future(self):
+        if self.model is None:
+            self.model = FasterWhisperModel(
+                    self.model_size,
+                    device=self.device,
+                    compute_type="default",
+                )
+        feature = self.model.feature_extractor(self.audio.ndarray)
+        self.model.feature_extractor.__call__ = lambda waveform, padding=160, chunk_length=None: feature
+
+
     def diarize(self, show_progress=True) -> List[SpeakerSegment]:
         self.logger.debug("Diarizing.")
         if self.audio.ndarray is None:
@@ -205,7 +216,7 @@ class Worker:
         elapsed = end - start
         self.elapsed_time[func_name] =elapsed
         sys.stdout.flush()
-        self.logger.info(f"Executed {func_name} in {elapsed:.2f} s")
+        self.logger.info(f"Executed {func_name} in {elapsed:.2f}s")
         return result
 
     def run(self):
@@ -281,29 +292,29 @@ class Worker:
             download_from_colab(file)
 
 
-    def parallel_transcribe_diarize(self):
+    def run_parallel(self):
+        """Trascribing and diarizing in parallel do not improve performace
+        because they confrict GPU usage resulting in worse than sequential mode.
+        So, only feature extraction (Using only CPU) and diarization are
+        executed in parallel.
+        """
         files_to_download = []
-        print("Calculating audio feature.")
-        if self.model is None:
-            self.model = FasterWhisperModel(
-                    self.model_size,
-                    device=self.device,
-                    compute_type="default",
-                )
-        feature = self.model.feature_extractor(self.audio.ndarray)
-        self.model.feature_extractor.__call__ = lambda waveform, padding=160, chunk_length=None: feature
 
-        print("Transcribing and diarizing in parallel.")
+        print("Feature extraction and diarizing in parallel.", flush=True)
         with ThreadPoolExecutor() as executor:
-            proc_transcribe = executor.submit(self.run_and_measure, self.transcribe)
-            proc_diarize = executor.submit(self.run_and_measure, self.diarize, show_progress=False)
+            proc_diarize = executor.submit(self.run_and_measure, self.diarize)
+            self.run_and_measure(self.extract_future)
             executor.shutdown(wait=True)
-        self.asr_segments = proc_transcribe.result()
-        self.diarized_segments = assign_speakers(
-            asr_segments=self.asr_segments,
-            diarization_result=proc_diarize.result(),
-            postprocesses=(combine_same_speakers,),
-        )
+        empty_cache()
+        self.run_and_measure(self.transcribe)
+        if self.asr_segments is None:
+            raise ValueError("self.asr_segments is None. Run self.transcribe.")
+        else:
+            self.diarized_segments = assign_speakers(
+                asr_segments=self.asr_segments,
+                diarization_result=proc_diarize.result(),
+                postprocesses=(combine_same_speakers,),
+            )
 
         print("Writing results.")
         outfiles = self._write_result(self.asr_segments)
