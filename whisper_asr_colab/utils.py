@@ -1,6 +1,5 @@
 import sys
 import re
-import time
 from typing import Tuple
 
 def str2seconds(time_str: str) -> float:

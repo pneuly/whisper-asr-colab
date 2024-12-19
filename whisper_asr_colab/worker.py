@@ -69,9 +69,19 @@ class Worker:
         if self.realtime:
             self.logger.info("`skip_silence` is disabled since `realtime` mode is enabled.")
             self.skip_silence = False
+        # Use model loading as waiting function since using time.sleep is just waste of time.
+        # set_silence_skip() calls audio._load_audio(), so upload_wait_func must be set before
+        # calling set_silence_skip().
+        self.audio.upload_wait_func = self.load_model
         if self.skip_silence:
             self.audio.set_silence_skip()
 
+    def load_model(self):
+        self.model = FasterWhisperModel(
+            self.model_size,
+            device=self.device,
+            compute_type="default",
+        )
 
     def transcribe(self) -> List[SpeakerSegment]:
         """Wrapper for faster-whisper transcription.
@@ -80,11 +90,7 @@ class Worker:
         """
         # Transcribe
         if self.model is None:
-            self.model = FasterWhisperModel(
-                    self.model_size,
-                    device=self.device,
-                    compute_type="default",
-                )
+            self.load_model()
         if self.realtime: # realtime trascription
             self.logger.info("Transcribing on the fly...")
             segments = realtime_transcribe(
@@ -103,11 +109,7 @@ class Worker:
         """Transcribe each diarized segment separately. Called by run2()"""
         self.logger.info("Transcribing each segment...")
         if self.model is None:
-            self.model = FasterWhisperModel(
-                    self.model_size,
-                    device=self.device,
-                    compute_type="default",
-                )
+            self.load_model()
 
         def _transcribe_and_add_speakers(speakerseg: SpeakerSegment) -> List[SpeakerSegment]:
             _asr_result = []
@@ -167,14 +169,12 @@ class Worker:
 
     def extract_future(self):
         if self.model is None:
-            self.model = FasterWhisperModel(
-                    self.model_size,
-                    device=self.device,
-                    compute_type="default",
-                )
-        feature = self.model.feature_extractor(self.audio.ndarray)
-        self.model.feature_extractor.__call__ = lambda waveform, padding=160, chunk_length=None: feature
-
+            self.load_model()
+        if isinstance(self.model, FasterWhisperModel):
+            feature = self.model.feature_extractor(self.audio.ndarray)
+            self.model.feature_extractor.__call__ = lambda waveform, padding=160, chunk_length=None: feature
+        else:
+            raise ValueError("Model is not loaded.")
 
     def diarize(self, show_progress=True) -> List[SpeakerSegment]:
         self.logger.debug("Diarizing.")

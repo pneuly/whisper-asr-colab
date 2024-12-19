@@ -32,7 +32,7 @@ def faster_whisper_transcribe(
     ) -> tuple[List[SpeakerSegment], Any]:
 
     logger.debug(f"VAD filter: {vad_filter}")
-    logger.debug(f"batich_size: {batch_size}")
+    logger.debug(f"batch_size: {batch_size}")
     if model is None:
         model = FasterWhisperModel(
             "large-v3-turbo",
