@@ -25,14 +25,14 @@ def faster_whisper_transcribe(
     initial_prompt: _Type_Prompt = None,
     hotwords: Optional[str] = None,
     chunk_length: int = 30,
-    batch_size: int = 16,
+    batch_size: int = 1,
     prefix: Optional[str] = None,
     vad_filter: bool = False,
     log_progress: bool = False,
     ) -> tuple[List[SpeakerSegment], Any]:
 
     logger.debug(f"VAD filter: {vad_filter}")
-    logger.debug(f"batich_size: {batch_size}")
+    logger.debug(f"batch_size: {batch_size}")
     if model is None:
         model = FasterWhisperModel(
             "large-v3-turbo",
@@ -53,7 +53,7 @@ def faster_whisper_transcribe(
             log_progress=log_progress,
         )
     else: # sequential mode
-        logger.info(f"batch_size is set to less than 2. ({batch_size}). Using sequential mode.")
+        logger.info(f"batch_size is set to less than 2 (batch_size={batch_size}). Using sequential mode.")
         segments_generator, info = model.transcribe(
             audio=audio,
             language=language,

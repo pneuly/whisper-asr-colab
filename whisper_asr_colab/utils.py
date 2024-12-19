@@ -32,6 +32,7 @@ def download_from_colab(filepath: str):
     if "google.colab" in sys.modules:
         sys.modules["google.colab"].files.download(filepath)
 
+
 def sanitize_filename(filename, replacement="_"):
     invalid_chars = r'[<>:"/\\|?*\x00-\x1F]'
     return re.sub(invalid_chars, replacement, filename)

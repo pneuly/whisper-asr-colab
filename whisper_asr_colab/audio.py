@@ -3,15 +3,16 @@ import re
 import os
 import time
 import logging
-import warnings
 import subprocess
-import ffmpeg
 import numpy as np
-from typing import Union, Optional, Tuple
+from typing import Union, Optional, Tuple, Callable
 from dataclasses import dataclass
-from .utils import sanitize_filename, str2seconds
+from .utils import str2seconds
 
 logger = logging.getLogger(__name__)
+
+def default_upload_wait(x: int = 10) -> None:
+    time.sleep(x)
 
 @dataclass
 class Audio:
@@ -22,8 +23,8 @@ class Audio:
     start_frame: Optional[int] = None
     end_frame: Optional[int] = None
     verify_upload: bool = True
+    upload_wait_func: Callable = default_upload_wait
     _rawdata: Optional[np.ndarray] = None
-
 
     @property
     def ndarray(self) -> np.ndarray:
@@ -40,17 +41,22 @@ class Audio:
             raise ValueError("No url or file path set.")
         if self.file_path is None or not os.path.exists(self.file_path):
             self.file_path = dl_audio(self.url, self.password) # type: ignore
-        logger.info(f"Loading audio file {self.file_path}")
-        if self.verify_upload and not is_upload_complete(self.file_path):
-            message = f"Uploaing {self.file_path} seems incomplete. Run again after the upload is finished."
-            if 'IPython' in sys.modules:
-                display = sys.modules["IPython"].display
-                display.display(display.Javascript(f'alert("{message}")'))
-                display.display(display.HTML(f'<div style="color: red; font-size:large; font-weight: bold;">⚠️ {message}</div>'))
-                warnings.filterwarnings("ignore", message="To exit: use 'exit', 'quit', or Ctrl-D.")
-                raise SystemExit
+        logger.info(f"Loading audio file {self.file_path} ({os.path.getsize(self.file_path)/1000000:.02f}MB)")
+        if self.verify_upload:
+            logger.info(f"Checking if uploading {self.file_path} is still uploading.")
+            uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.file_path, self.upload_wait_func)
+            if uploading_flag:
+                logger.info(f"File size increase is detected in {wait_time:.02f} seconds.")
+                message = f"{self.file_path} seems still uploading. Waiting until upload finished."
+                if 'IPython' in sys.modules:
+                    display = sys.modules["IPython"].display
+                    display.display(display.HTML(f'<div style="color: red; font-size:large; font-weight: bold;">⚠️ {message}</div>'))
+                uploading_flag = True
+                while uploading_flag:
+                    uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.file_path, lambda x=10: time.sleep(x))
+                    logger.info(f"Uploaded size: {filesize2 / 1000000}MB ({(filesize2 - filesize1) / (wait_time * 1000):.01f} kB/s)")
             else:
-                sys.exit(message)
+                logger.info(f"No file size increase is detected in {wait_time:.02f} seconds.")
         _rawdata = decode_audio(self.file_path, self.sampling_rate)
         if not isinstance(_rawdata, np.ndarray):
             raise ValueError("Failed to get audio data. Check if url or file path is correctly set.")
@@ -186,17 +192,21 @@ def dl_audio(url: str, password: Optional[str] = None):
     return outfilename
 
 
-def is_upload_complete(file: str, threshold: int = 10000000) -> bool:
-    """Check if the file upload is complete when the file size is
-    below the threshold (bytes). Default threshold is 10MB"""
+def is_uploading(
+        file: str,
+        wait_func: Callable = lambda x=10: time.sleep(x),
+    ) -> Tuple[bool, float, float, float]:
+    """There is no direct way to detect if the file is still uploading on Google Colab.
+    So, detecting file size increase is used as a workaround."""
     filesize = os.path.getsize(file)
-    if filesize < threshold:
-        time.sleep(10)
-        filesize2 = os.path.getsize(file)
-        if (filesize2 - filesize) > 0:
-        # File uploading seems incomplete
-            return False
-    return True
+    wait_start = time.time()
+    wait_func()
+    wait_time = time.time() - wait_start
+    filesize2 = os.path.getsize(file)
+    if (filesize2 - filesize) > 0:
+        logger.info(f"File {file} is still uploading.")
+        return True, filesize, filesize2, wait_time
+    return False, filesize, filesize2, wait_time
 
 
 def subprocess_progress(cmd: list):
@@ -239,24 +249,3 @@ def get_silence_duration(audio_file) -> float:
     if len(result) > 0 and "silence_start: 0" in result[0]:
         silence_duration = float(result[1].split()[-1])
     return silence_duration
-
-def trim_audio(
-        audiopath: str,
-        start_time: Union[str, int, float] = "",
-        end_time: Union[str, int, float] = ""
-    ):
-    start_time = str(start_time)
-    end_time = str(end_time)
-    if start_time and end_time:
-        input = ffmpeg.input(audiopath, ss=start_time, to=end_time)
-    elif not start_time and end_time:
-        input = ffmpeg.input(audiopath, to=end_time)
-    else:
-        input = ffmpeg.input(audiopath, ss=start_time)
-    input_base, input_ext = os.path.splitext(audiopath)
-    input_path = f"{input_base}_{sanitize_filename(start_time)}_{sanitize_filename(end_time)}{input_ext}"
-    logger.info(f"Trimming audio from {start_time} to {end_time}.")
-    ffmpeg.output(input, input_path, acodec="copy", vcodec="copy").run(
-            overwrite_output=True
-            )
-    return input_path

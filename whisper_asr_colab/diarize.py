@@ -3,6 +3,7 @@ from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy
 from typing import List, Union, Optional, BinaryIO
 from numpy import ndarray
+import contextlib
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
 from .speakersegment import SpeakerSegment
@@ -27,8 +28,9 @@ class DiarizationPipeline:
     def __call__(
             self,
             audio: Union[str, ndarray, BinaryIO],
-            min_duration_on=1.5,  # remove speech regions shorter than this seconds.
-            min_duration_off=1.5,  # fill non-speech regions shorter than this seconds.
+            min_duration_on: float = 1.5,  # remove speech regions shorter than this seconds.
+            min_duration_off: float = 1.5,  # fill non-speech regions shorter than this seconds.
+            show_progress: bool = True,
             ) -> List[SpeakerSegment]:
         if isinstance(audio, ndarray):
             audio_data = {"waveform": from_numpy(audio[None, :]), "sample_rate": 16000}
@@ -39,8 +41,9 @@ class DiarizationPipeline:
 
         self.pipeline.min_duration_on = min_duration_on
         self.pipeline.min_duration_off = min_duration_off
+        hook = ProgressHook() if show_progress else None
         speaker_segments = []
-        with ProgressHook() as hook:
+        with hook or contextlib.nullcontext():
             for time_segment, _, speaker in self.pipeline(
                     audio_data, hook=hook,).itertracks(yield_label=True):
                 speaker_segments.append(
@@ -50,16 +53,6 @@ class DiarizationPipeline:
                         speaker=speaker
                     )
                 )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"diarized_result: {speaker_segments}")
         return speaker_segments
-
-
-def diarize(
-        audio: Union[str, BinaryIO, ndarray],
-        hugging_face_token: str,
-    ) -> List[SpeakerSegment]:
-
-    diarize_model = DiarizationPipeline(use_auth_token=hugging_face_token)
-    diarized_result = diarize_model(audio)
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"diarized_result: {diarized_result}")
-    return diarized_result

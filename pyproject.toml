@@ -14,7 +14,9 @@ dependencies =  [
     "numpy>=1",
     "pandas>=2",
     "pyannote.audio>=3",
-    "torch>=2.1.1 ",
+    "torch>=2.1.1",
+    "ctranslate2==4.4.0",
+    "numba>=0.54",
 ]
 
 [tool.setuptools.packages.find]

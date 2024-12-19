@@ -1,19 +1,21 @@
+import time
 import gc
+import sys
 import logging
 from torch.cuda import empty_cache
 from datetime import datetime
-from dataclasses import dataclass
-from typing import Optional, Union, Iterable, Tuple, List, Any
+from dataclasses import dataclass, field
+from collections import defaultdict
+from typing import Optional, Union, Iterable, Tuple, List, DefaultDict, Any
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel as FasterWhisperModel
 from .docx_generator import DocxGenerator
 from .audio import Audio
 from .utils import download_from_colab, str2seconds
 from .asr import faster_whisper_transcribe, realtime_transcribe
-from .diarize import diarize as _diarize
+from .diarize import DiarizationPipeline
 from .speakersegment import SpeakerSegment, assign_speakers, combine, combine_same_speakers, write_result
 
-logger = logging.getLogger(__name__)
 
 @dataclass
 class Worker:
@@ -45,6 +47,7 @@ class Worker:
     #result data
     asr_segments: Optional[List[SpeakerSegment]] = None  # result from whisper
     diarized_segments: Optional[List[SpeakerSegment]] = None  # result from pyannote
+    elapsed_time: DefaultDict[str, float] = field(default_factory=lambda: defaultdict(float))
 
     @property
     def timestamp_offset(self) -> float:
@@ -58,16 +61,27 @@ class Worker:
 
 
     def __post_init__(self):
+        self.logger = logging.getLogger(__name__)
         if isinstance(self.audio, str):
             self.audio = Audio.from_path_or_url(self.audio)
         if self.password:
             self.audio.password = self.password
         if self.realtime:
-            logger.info("`skip_silence` is disabled since `realtime` mode is enabled.")
+            self.logger.info("`skip_silence` is disabled since `realtime` mode is enabled.")
             self.skip_silence = False
+        # Use model loading as waiting function since using time.sleep is just waste of time.
+        # set_silence_skip() calls audio._load_audio(), so upload_wait_func must be set before
+        # calling set_silence_skip().
+        self.audio.upload_wait_func = self.load_model
         if self.skip_silence:
             self.audio.set_silence_skip()
 
+    def load_model(self):
+        self.model = FasterWhisperModel(
+            self.model_size,
+            device=self.device,
+            compute_type="default",
+        )
 
     def transcribe(self) -> List[SpeakerSegment]:
         """Wrapper for faster-whisper transcription.
@@ -76,13 +90,9 @@ class Worker:
         """
         # Transcribe
         if self.model is None:
-            self.model = FasterWhisperModel(
-                    self.model_size,
-                    device=self.device,
-                    compute_type="default",
-                )
+            self.load_model()
         if self.realtime: # realtime trascription
-            logger.info("Transcribing on the fly...")
+            self.logger.info("Transcribing on the fly...")
             segments = realtime_transcribe(
                 process=self.audio.live_stream,
                 model=self.model,
@@ -91,18 +101,15 @@ class Worker:
             )
         else:  # normal transcription
             segments, _ = self.call_faster_whisper_transcribe()
-        return segments
+        self.asr_segments = segments
+        return self.asr_segments
 
 
     def transcribe_segmented(self) -> List[SpeakerSegment]:
         """Transcribe each diarized segment separately. Called by run2()"""
-        logger.info("Transcribing each segment...")
+        self.logger.info("Transcribing each segment...")
         if self.model is None:
-            self.model = FasterWhisperModel(
-                    self.model_size,
-                    device=self.device,
-                    compute_type="default",
-                )
+            self.load_model()
 
         def _transcribe_and_add_speakers(speakerseg: SpeakerSegment) -> List[SpeakerSegment]:
             _asr_result = []
@@ -127,7 +134,8 @@ class Worker:
                     result = proc.result()
                     if result:
                         asr_result.extend(result)
-        return asr_result
+        self.asr_segments = asr_result
+        return self.asr_segments
 
 
     def call_faster_whisper_transcribe(
@@ -140,7 +148,7 @@ class Worker:
             raise ValueError("Audio must be set in worker.audio.")
         _start = start_time if start_time else self.audio.start_time
         _end = end_time if end_time else self.audio.end_time
-        logger.info(f"Transcribing from {_start} to {_end}")
+        self.logger.info(f"Transcribing from {_start} to {_end}")
         segments, _ = faster_whisper_transcribe(
                 audio=self.audio.get_time_slice(_start, _end),
                 model=self.model,
@@ -159,18 +167,29 @@ class Worker:
         return segments, _
 
 
-    def diarize(self):
-        logger.debug("Diarizing.")
+    def extract_future(self):
+        if self.model is None:
+            self.load_model()
+        if isinstance(self.model, FasterWhisperModel):
+            feature = self.model.feature_extractor(self.audio.ndarray)
+            self.model.feature_extractor.__call__ = lambda waveform, padding=160, chunk_length=None: feature
+        else:
+            raise ValueError("Model is not loaded.")
+
+    def diarize(self, show_progress=True) -> List[SpeakerSegment]:
+        self.logger.debug("Diarizing.")
         if self.audio.ndarray is None:
             raise ValueError("Audio must be specified in worker.audio.")
-        segments = _diarize(
+        dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token)
+        segments = dpipe(
             audio=self.audio.ndarray,
-            hugging_face_token=self.hugging_face_token,
+            show_progress=show_progress,
         )
         if segments and self.audio.start_time:
             for item in segments:
                 item.shift_time(self.audio.start_time)
-        return segments
+        self.diarized_segments = segments
+        return self.diarized_segments
 
     def _write_result(self, speaker_segments, with_speakers=False):
         if isinstance(self.audio.file_path, str):
@@ -184,15 +203,27 @@ class Worker:
             self.timestamp_offset if self.timestamp_offset else 0.0
         )
 
-    # TODO run asr and diarization simultaneously (Threading)
-    # TODO run download processes (audio, model and others) simultaneously
+    # TODO run upload/download processes (audio, model and others) simultaneously
+    # TODO minimize log output to screen
+    # TODO calc execution time
+
+    def run_and_measure(self, func, *args, **kargs):
+        func_name = func.__name__
+        self.logger.info(f"Excecuting {func_name}.")
+        start = time.time()
+        result = func(*args, **kargs)
+        end = time.time()
+        elapsed = end - start
+        self.elapsed_time[func_name] =elapsed
+        sys.stdout.flush()
+        self.logger.info(f"Executed {func_name} in {elapsed:.2f}s")
+        return result
+
     def run(self):
         """Wrapper for ASR and diarization"""
         files_to_download = []
-        print("Transcribing.")
-        self.asr_segments = self.transcribe()
-        print("Writing ASR result.")
-        outfiles = self._write_result(self.asr_segments)
+        self.run_and_measure(self.transcribe)
+        outfiles = self.run_and_measure(self._write_result, self.asr_segments)
         files_to_download.extend(outfiles)
 
         del self.model
@@ -200,8 +231,11 @@ class Worker:
         gc.collect()
 
         if self.diarization:
-            print("Diarizing.")
-            self.diarized_segments = self.diarize()
+            self.run_and_measure(self.diarize)
+            if not self.asr_segments:
+                raise ValueError("self.asr_segments is empty.")
+            if not self.diarized_segments:
+                raise ValueError("self.diarized_segments is empty.")
             self.diarized_segments = assign_speakers(
                 asr_segments=self.asr_segments,
                 diarization_result=self.diarized_segments,
@@ -209,11 +243,9 @@ class Worker:
             )
 
             print("Writing diarization result.")
-            diarized_txt = self._write_result(self.diarized_segments, with_speakers=True)[0]
-
+            diarized_txt = self.run_and_measure(
+                self._write_result, self.diarized_segments, with_speakers=True)[0]
             files_to_download.append(diarized_txt)
-
-            empty_cache()
 
             print("Writing to docx.")
             doc = DocxGenerator()
@@ -233,8 +265,9 @@ class Worker:
         """Similar to run(), but diarize first and ASR for each diarized segment"""
         files_to_download = []
         print("Diarizing.")
-        self.diarized_segments = self.diarize()
-        self.asr_segments = self.transcribe_segmented()
+        self.diarize()
+        print("Transcribing.")
+        self.transcribe_segmented()
 
         print("Writing ASR result.")
         outfiles = self._write_result(self.asr_segments)
@@ -243,8 +276,6 @@ class Worker:
         print("Writing diarizing result.")
         diarized_txt = self._write_result(self.asr_segments, with_speakers=True)[0]
         files_to_download.append(diarized_txt)
-
-        empty_cache()
 
         print("Writing to docx.")
         doc = DocxGenerator()
@@ -256,6 +287,49 @@ class Worker:
         if not self.audio.url:
             files_to_download.append(self.audio.file_path)
 
+        for file in files_to_download:
+            print(f"Downloading {file}")
+            download_from_colab(file)
+
+
+    def run_parallel(self):
+        """Trascribing and diarizing in parallel do not improve performace
+        because they confrict GPU usage resulting in worse than sequential mode.
+        So, only feature extraction (Using only CPU) and diarization are
+        executed in parallel.
+        """
+        files_to_download = []
+
+        print("Feature extraction and diarizing in parallel.", flush=True)
+        with ThreadPoolExecutor() as executor:
+            proc_diarize = executor.submit(self.run_and_measure, self.diarize)
+            self.run_and_measure(self.extract_future)
+            executor.shutdown(wait=True)
+        empty_cache()
+        self.run_and_measure(self.transcribe)
+        if self.asr_segments is None:
+            raise ValueError("self.asr_segments is None. Run self.transcribe.")
+        else:
+            self.diarized_segments = assign_speakers(
+                asr_segments=self.asr_segments,
+                diarization_result=proc_diarize.result(),
+                postprocesses=(combine_same_speakers,),
+            )
+
+        print("Writing results.")
+        outfiles = self._write_result(self.asr_segments)
+        files_to_download.extend(outfiles)
+        diarized_txt = self._write_result(self.diarized_segments, with_speakers=True)[0]
+        files_to_download.append(diarized_txt)
+
+        print("Writing to docx.")
+        doc = DocxGenerator()
+        doc.txt_to_word(diarized_txt)
+        files_to_download.append(doc.docfilename)
+
+        # Add audio file to files to download if needed
+        if self.audio.url:
+            files_to_download.append(self.audio.file_path)
         for file in files_to_download:
             print(f"Downloading {file}")
             download_from_colab(file)
