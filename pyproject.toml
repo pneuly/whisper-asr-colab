@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "whisper_asr_colab"
@@ -18,12 +18,23 @@ dependencies =  [
     "ctranslate2==4.4.0",
     "numba>=0.54",
 ]
+description = "Aggregation package for speech-to-text and diarization, featuring an example implementation on Google Colab."
+readme = "README.md"
+license = "MIT"
 
-[tool.setuptools.packages.find]
-exclude = ["build", "tests"]
+[tool.hatch.version]
+source = "vcs"
+path = "whisper_asr_colab/__init__.py"
 
-[tool.setuptools.dynamic]
-version = {attr = "whisper_asr_colab.__version__"}
+[tool.hatch.metadata]
+allow-direct-references = true
 
-[tool.setuptools_scm]
-version_file = "whisper_asr_colab/_version.py"
+[tool.hatch.build]
+packages = ["whisper_asr_colab"]
+exclude = ["whisper_asr_colab/templete_xmls/"]
+
+[tool.hatch.build.hooks.custom]
+path = "scripts/restore_docx.py"
+
+[tool.hatch.build.targets.wheel.force-include]
+"whisper_asr_colab/templates" = "whisper_asr_colab/templates"
