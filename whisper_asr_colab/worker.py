@@ -13,7 +13,7 @@ from .docx_generator import DocxGenerator
 from .audio import Audio
 from .utils import download_from_colab, str2seconds
 from .asr import faster_whisper_transcribe, realtime_transcribe
-from .diarize import DiarizationPipeline
+#from .diarize import DiarizationPipeline
 from .speakersegment import SpeakerSegment, assign_speakers, combine, combine_same_speakers, write_result
 
 
@@ -177,7 +177,8 @@ class Worker:
             raise ValueError("Model is not loaded.")
 
     def diarize(self, show_progress=True) -> List[SpeakerSegment]:
-        self.logger.debug("Diarizing.")
+        print("Diarization is temporarily disabled due to technical issues.")
+        """self.logger.debug("Diarizing.")
         if self.audio.ndarray is None:
             raise ValueError("Audio must be specified in worker.audio.")
         dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token)
@@ -190,6 +191,7 @@ class Worker:
                 item.shift_time(self.audio.start_time)
         self.diarized_segments = segments
         return self.diarized_segments
+        """
 
     def _write_result(self, speaker_segments, with_speakers=False):
         if isinstance(self.audio.file_path, str):
