@@ -1,0 +1,5 @@
+torch==2.5.1+cu124
+torchaudio==2.5.1+cu124
+#nvidia-cudnn-cu12>=9.3
+
+#RuntimeError: cuDNN error: CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH
