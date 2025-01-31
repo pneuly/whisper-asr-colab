@@ -268,7 +268,7 @@ class Worker:
         files_to_download = []
         print("Diarizing.")
         self.diarize()
-        print("Transcribing.")
+        print("Transcribing.", flush=True)
         self.transcribe_segmented()
 
         print("Writing ASR result.")
