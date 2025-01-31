@@ -1,0 +1,12 @@
+#These dependencies require pytorch
+asteroid-filterbanks >=0.4
+lightning >= 2.0.1
+pytorch_metric_learning >= 2.1.0
+speechbrain >= 1.0.0
+torch >= 2.0.0
+torch_audiomentations >= 0.12.0
+torchaudio >= 2.2.0
+torchmetrics >= 0.11.0
+torch-pitch-shift
+pytorch-metric-learning
+julius
