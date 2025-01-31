@@ -1,0 +1,11 @@
+faster-whisper@git+https://github.com/SYSTRAN/faster-whisper.git
+python-docx>=1
+yt-dlp
+ffmpeg-python>=0.2
+numpy>=1
+numba>=0.54
+pandas>=2
+#pyannote.audio>=3
+#torchaudio==2.5.1+cu124
+#torch==2.5.*
+#ctranslate2==4.4.0

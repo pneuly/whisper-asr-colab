@@ -1,84 +1,26 @@
 import time
 import sys
 import datetime
-from logging import getLogger, DEBUG
+from logging import getLogger
 from subprocess import Popen
-from typing import Union, Optional, Iterable, TextIO, BinaryIO, List, Any
+from typing import Union, Optional, Iterable, TextIO, ParamSpec
 import numpy as np
-from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
+from faster_whisper import WhisperModel as FasterWhisperModel
 import ipywidgets as widgets
-from .speakersegment import SpeakerSegment
-from .utils import format_timestamp
+from whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
 
 
 logger = getLogger(__name__)
 
 _Type_Prompt = Optional[Union[str, Iterable[int]]]
-
-# TODO provide AsrOptions class
-
-def faster_whisper_transcribe(
-    audio: Union[str, BinaryIO, np.ndarray],
-    model: Optional[FasterWhisperModel] = None,
-    language: Optional[str] = None,
-    multilingual: bool = False,
-    initial_prompt: _Type_Prompt = None,
-    hotwords: Optional[str] = None,
-    chunk_length: int = 30,
-    batch_size: int = 1,
-    prefix: Optional[str] = None,
-    vad_filter: bool = False,
-    log_progress: bool = False,
-    ) -> tuple[List[SpeakerSegment], Any]:
-
-    logger.debug(f"VAD filter: {vad_filter}")
-    logger.debug(f"batch_size: {batch_size}")
-    if model is None:
-        model = FasterWhisperModel(
-            "large-v3-turbo",
-            device="auto",
-            compute_type="default",
-    )
-    if batch_size > 1: # batch mode
-        batched_model = BatchedInferencePipeline(model=model)
-        segments_generator, info = batched_model.transcribe(
-            audio=audio,
-            language=language,
-            #multilingual=multilingual,
-            initial_prompt=initial_prompt,
-            hotwords=hotwords,
-            prefix=prefix,
-            #chunk_length = chunk_length,  #  not implemented
-            batch_size=batch_size,
-            log_progress=log_progress,
-        )
-    else: # sequential mode
-        logger.info(f"batch_size is set to less than 2 (batch_size={batch_size}). Using sequential mode.")
-        segments_generator, info = model.transcribe(
-            audio=audio,
-            language=language,
-            multilingual=multilingual,
-            vad_filter=vad_filter,
-            initial_prompt=initial_prompt,
-            hotwords=hotwords,
-            prefix=prefix,
-            condition_on_previous_text=False, # supress hallucination and repetitive text
-            without_timestamps=False,
-        )
-    segments = []
-    for segment in segments_generator:
-        print(f"[{format_timestamp(segment.start, '02.0f')} - {format_timestamp(segment.end, '02.0f')}] {segment.text}")
-        segments.append(SpeakerSegment.from_segment(segment))
-    if logger.isEnabledFor(DEBUG):
-        logger.debug(f"Transcribed segments:\n{segments}")
-    return segments, info
+P = ParamSpec('P')
 
 def realtime_transcribe(
         process: Popen, # streaming process
         model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
         initial_prompt: _Type_Prompt = None,
-    ) -> List[SpeakerSegment]:
+    ) -> SpeakerSegmentList:
     ## TODO: Improve real-time transcription quality.
     ## The current code handles the audio every 30 seconds, which harms transcription quality.
     ## Possible improvements:
@@ -143,4 +85,4 @@ def realtime_transcribe(
         else:
             time.sleep(0.1)
     fh1.close()
-    return [SpeakerSegment.from_segment(segment) for segment in segments]
+    return [SpeakerSegment(segment=segment) for segment in segments]

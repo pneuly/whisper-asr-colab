@@ -1,25 +1,29 @@
-from whisper_asr_colab.asr import faster_whisper_transcribe
-from faster_whisper import WhisperModel as FasterWhisperModel
 from whisper_asr_colab.audio import Audio
+from whisper_asr_colab.asr import ASRWorker
 
 def perform_asr(audio:str, batch_size:int):
-    model = FasterWhisperModel("tiny")
-    segments, info = faster_whisper_transcribe(
-        model=model,
-        audio=Audio.from_path_or_url(audio).ndarray,
-        batch_size=batch_size,
+    _audio = Audio(audio)
+    _audio.verify_upload = False
+    worker = ASRWorker(
+        audio=_audio,
+        load_model_args={"model_size_or_path" : "tiny",},
+        transcribe_args={"batch_size" : batch_size,}
     )
-    for segment in segments:
-        print(segment.text)
-    assert info.all_language_probs is not None
-    assert info.language == "ja"
-    assert info.language_probability > 0.9
+    
+    worker.run()
+    segments = worker.asr_segments
+    for seg in segments:
+        print(seg.segment.text)
     assert len(segments) > 1
-    assert segments[0].text != ""
-    return (segments, info,)
+    assert segments[0].segment.text != ""
+    return (segments,)
 
 def test_asr_squential(audio):
     perform_asr(audio, 1)
 
 def test_asr_batched(audio):
     perform_asr(audio, 4)
+
+
+
+
