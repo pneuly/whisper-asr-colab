@@ -181,7 +181,7 @@ class Worker:
         if self.audio.ndarray is None:
             raise ValueError("Audio must be specified in worker.audio.")
         dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token)
-        print("dpipe is ready.")
+        print("dpipe is ready.", flush=True)
         segments = dpipe(
             audio=self.audio.ndarray,
             show_progress=show_progress,
