@@ -186,6 +186,7 @@ class Worker:
             audio=self.audio.ndarray,
             show_progress=show_progress,
         )
+        print("diarization finished.", flush=True)
         if segments and self.audio.start_time:
             for item in segments:
                 item.shift_time(self.audio.start_time)
