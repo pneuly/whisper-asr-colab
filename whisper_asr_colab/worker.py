@@ -183,7 +183,7 @@ class Worker:
         dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token)
         segments = dpipe(
             audio=self.audio.ndarray,
-            show_progress=show_progress,
+#            show_progress=show_progress,
         )
         if segments and self.audio.start_time:
             for item in segments:
