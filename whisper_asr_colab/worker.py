@@ -114,6 +114,7 @@ class Worker:
 
         def _transcribe_and_add_speakers(speakerseg: SpeakerSegment) -> List[SpeakerSegment]:
             _asr_result = []
+            print(f"Transcribing {speakerseg.start} to {speakerseg.end}", flush=True)
             segments, _ = self.call_faster_whisper_transcribe(
                 start_time=speakerseg.start,
                 end_time=speakerseg.end)
