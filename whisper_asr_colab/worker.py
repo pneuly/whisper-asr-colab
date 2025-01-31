@@ -118,6 +118,7 @@ class Worker:
             segments, _ = self.call_faster_whisper_transcribe(
                 start_time=speakerseg.start,
                 end_time=speakerseg.end)
+            print(f"Transcribed {speakerseg.start} to {speakerseg.end}", flush=True)
             if segments:
                 segment = combine(segments)
                 segment.speaker = speakerseg.speaker
