@@ -123,6 +123,7 @@ class Worker:
                 segment = combine(segments)
                 segment.speaker = speakerseg.speaker
                 _asr_result.append(segment)
+            print(_asr_result, flush=True) # debug
             return _asr_result
 
         asr_result = []
