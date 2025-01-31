@@ -180,17 +180,17 @@ class Worker:
         self.logger.debug("Diarizing.")
         if self.audio.ndarray is None:
             raise ValueError("Audio must be specified in worker.audio.")
-        dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token)
+        dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token) ## crashes here
         print("dpipe is ready.", flush=True)
-        #segments = dpipe(
-        #    audio=self.audio.ndarray,
-        #    show_progress=show_progress,
-        #)
-        #if segments and self.audio.start_time:
-        #    for item in segments:
-        #        item.shift_time(self.audio.start_time)
-        #self.diarized_segments = segments
-        #return self.diarized_segments
+        segments = dpipe(
+            audio=self.audio.ndarray,
+            show_progress=show_progress,
+        )
+        if segments and self.audio.start_time:
+            for item in segments:
+                item.shift_time(self.audio.start_time)
+        self.diarized_segments = segments
+        return self.diarized_segments
 
     def _write_result(self, speaker_segments, with_speakers=False):
         if isinstance(self.audio.file_path, str):
