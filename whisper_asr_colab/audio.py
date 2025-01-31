@@ -40,8 +40,11 @@ class Audio:
         if self.file_path is None and self.url is None:
             raise ValueError("No url or file path set.")
         if self.file_path is None or not os.path.exists(self.file_path):
+            logger.info(f"File path ({self.file_path}) is not set or file does not exist. Downloading audio.")
             self.file_path = dl_audio(self.url, self.password) # type: ignore
         logger.info(f"Loading audio file {self.file_path} ({os.path.getsize(self.file_path)/1000000:.02f}MB)")
+        # Check if the uploading is finished.
+        # self.upload_wait_func is used to wait for the check.
         if self.verify_upload:
             logger.info(f"Checking if uploading {self.file_path} is still uploading.")
             uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.file_path, self.upload_wait_func)

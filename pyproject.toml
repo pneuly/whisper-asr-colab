@@ -1,23 +1,14 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling", "hatch-vcs", "hatch-requirements-txt"]
 build-backend = "hatchling.build"
 
 [project]
 name = "whisper_asr_colab"
-dynamic = ["version"]
+dynamic = ["version", "dependencies"]
 
-dependencies =  [
-    "faster-whisper@git+https://github.com/SYSTRAN/faster-whisper.git",
-    "python-docx>=1",
-    "yt-dlp",
-    "ffmpeg-python>=0.2",
-    "numpy>=1",
-    "pandas>=2",
-    "pyannote.audio>=3",
-    "torch==2.5.*",
-    "ctranslate2==4.4.0",
-    "numba>=0.54",
-]
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
+
 description = "Aggregation package for speech-to-text and diarization, featuring an example implementation on Google Colab."
 readme = "README.md"
 license = "MIT"

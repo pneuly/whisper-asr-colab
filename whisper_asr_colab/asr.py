@@ -16,6 +16,16 @@ logger = getLogger(__name__)
 _Type_Prompt = Optional[Union[str, Iterable[int]]]
 
 # TODO provide AsrOptions class
+@staticmethod
+def load_model(
+    model_size: str = "large-v3-turbo",
+    device: str = "auto",
+    compute_type: str = "default",
+    ) -> FasterWhisperModel:
+    return FasterWhisperModel(
+        model_size_or_path=model_size,
+        device=device,
+        compute_type=compute_type)
 
 def faster_whisper_transcribe(
     audio: Union[str, BinaryIO, np.ndarray],
