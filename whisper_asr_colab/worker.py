@@ -109,6 +109,7 @@ class Worker:
         """Transcribe each diarized segment separately. Called by run2()"""
         self.logger.info("Transcribing each segment...")
         if self.model is None:
+            print("Loading model.", flush=True)
             self.load_model()
 
         def _transcribe_and_add_speakers(speakerseg: SpeakerSegment) -> List[SpeakerSegment]:
@@ -266,7 +267,7 @@ class Worker:
     def run2(self):
         """Similar to run(), but diarize first and ASR for each diarized segment"""
         files_to_download = []
-        print("Diarizing.")
+        print("Diarizing.", flush=True)
         self.diarize()
         print("Transcribing.", flush=True)
         self.transcribe_segmented()
