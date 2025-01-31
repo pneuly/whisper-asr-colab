@@ -14,8 +14,8 @@ dependencies =  [
     "numpy>=1",
     "pandas>=2",
     "pyannote.audio>=3",
-    "torch==2.5.*",
-    "ctranslate2==4.4.0",
+    #"torch==2.5.*",
+    #"ctranslate2==4.4.0",
     "numba>=0.54",
 ]
 description = "Aggregation package for speech-to-text and diarization, featuring an example implementation on Google Colab."
