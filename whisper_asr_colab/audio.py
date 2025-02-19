@@ -191,7 +191,8 @@ def dl_audio(url: str, password: Optional[str] = None):
         text=True,
         encoding="utf-8"
     ).stdout.strip()
-    subprocess_progress(["yt-dlp"] + options + [url])
+    cmd = ["yt-dlp"] + options + [url]
+    subprocess_progress(cmd)
     return outfilename
 
 
@@ -223,7 +224,7 @@ def subprocess_progress(cmd: list):
         while True:
             buf = p.stdout.read()
             if buf is not None:
-                sys.stdout.write(buf)
+                sys.stdout.write(buf.decode('utf-8'))
                 sys.stdout.flush()
             if p.poll() is not None:
                 break
