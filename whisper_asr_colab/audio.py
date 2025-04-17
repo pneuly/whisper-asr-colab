@@ -17,6 +17,7 @@ def default_upload_wait(x: int = 10) -> None:
 @dataclass
 class Audio:
     url: Optional[str] = None
+    download_format: Optional[str] = None
     password: Optional[str] = None
     file_path: Optional[str] = None
     sampling_rate: int = 16000
@@ -41,7 +42,7 @@ class Audio:
             raise ValueError("No url or file path set.")
         if self.file_path is None or not os.path.exists(self.file_path):
             logger.info(f"File path ({self.file_path}) is not set or file does not exist. Downloading audio.")
-            self.file_path = dl_audio(self.url, self.password) # type: ignore
+            self.file_path = dl_audio(self.url, self.download_format, self.password) # type: ignore
         logger.info(f"Loading audio file {self.file_path} ({os.path.getsize(self.file_path)/1000000:.02f}MB)")
         # Check if the uploading is finished.
         # self.upload_wait_func is used to wait for the check.
@@ -178,15 +179,16 @@ def decode_audio_pipe(audio: str, sampling_rate: int = 16000):
     )
 
 
-def dl_audio(url: str, password: Optional[str] = None):
+def dl_audio(url: str, format: Optional[str] = None, password: Optional[str] = None):
     """Download file from Internet"""
     logger.info(f"Downloading audio from {url}")
     # YoutubeDL class causes download errors, using external command instead
-    options = ["-x", "-S", "+acodec:mp4a", "-o", "%(title)s.%(ext)s"]
+    options = ["-x", "-o", "%(title)s.%(ext)s"]
+    options += ["--audio-format", format] if format else ["-S", "+acodec:mp4a"]
     if password:
         options += ["--video-password", password]
     outfilename = subprocess.run(
-        ["yt-dlp", "--print", "filename"] + options + [url],
+        ["yt-dlp"] + options + ["--print", "after_move:filepath"] + [url],
         capture_output=True,
         text=True,
         encoding="utf-8"
