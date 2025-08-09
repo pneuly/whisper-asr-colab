@@ -7,6 +7,7 @@ import subprocess
 import numpy as np
 from typing import Union, Optional, Tuple, Callable
 from dataclasses import dataclass
+from yt_dlp import YoutubeDL
 from .utils import str2seconds
 
 logger = logging.getLogger(__name__)
@@ -182,21 +183,18 @@ def decode_audio_pipe(audio: str, sampling_rate: int = 16000):
 def dl_audio(url: str, format: Optional[str] = None, password: Optional[str] = None):
     """Download file from Internet"""
     logger.info(f"Downloading audio from {url}")
-    # YoutubeDL class causes download errors, using external command instead
-    options = ["-x", "-o", "%(title)s.%(ext)s"]
-    options += ["--audio-format", format] if format else ["-S", "+acodec:mp4a"]
+    ydl_opts = {
+        'format': '140/bestaudio/best',
+        'outtmpl': '%(title)s.%(ext)s',
+        'quiet': False,
+        'noplaylist': True,
+    }
     if password:
-        options += ["--video-password", password]
-    outfilename = subprocess.run(
-        ["yt-dlp"] + options + ["--print", "after_move:filepath"] + [url],
-        capture_output=True,
-        text=True,
-        encoding="utf-8"
-    ).stdout.strip()
-    cmd = ["yt-dlp"] + options + [url]
-    subprocess_progress(cmd)
-    return outfilename
-
+        ydl_opts['video_password'] = password
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        outfilename = ydl.prepare_filename(info)
+        return outfilename
 
 def is_uploading(
         file: str,

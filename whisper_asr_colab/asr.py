@@ -76,9 +76,12 @@ def faster_whisper_transcribe(
             without_timestamps=False,
         )
     segments = []
-    for segment in segments_generator:
-        print(f"[{format_timestamp(segment.start, '02.0f')} - {format_timestamp(segment.end, '02.0f')}] {segment.text}")
-        segments.append(SpeakerSegment.from_segment(segment))
+    with open("diarization_progress.txt", "w", encoding="utf-8", buffering=1) as f:
+        for segment in segments_generator:
+            segment_text = f"[{format_timestamp(segment.start, '02.0f')} - {format_timestamp(segment.end, '02.0f')}] {segment.text}"
+            #print(segment_text)
+            f.write(segment_text + "\n")
+            segments.append(SpeakerSegment.from_segment(segment))
     if logger.isEnabledFor(DEBUG):
         logger.debug(f"Transcribed segments:\n{segments}")
     return segments, info

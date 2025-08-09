@@ -1,13 +1,15 @@
 import time
 import sys
+import os
 import logging
 from datetime import datetime
 from dataclasses import dataclass, field
 from collections import defaultdict
 from typing import Optional, Union, Iterable, Tuple, List, DefaultDict, Any
+import ffmpeg
 from .docx_generator import DocxGenerator
 from .audio import Audio
-from .utils import download_from_colab, str2seconds
+from .utils import str2seconds
 from .speakersegment import (
     SpeakerSegment,
     assign_speakers,
@@ -169,17 +171,15 @@ class Worker:
 
     def run(self):
         """Wrapper for ASR and diarization"""
-        files_to_download = []
-
         # Isolate the ASR process from diarization process
         # because Pipeline of pyannote.audio crashes if faster whisper is called beforehand.
         self.transcribe()
         outfiles = _write_result(self.asr_segments, self.audio.file_path)
-        files_to_download.extend(outfiles)
         del self.model
 
         print("Saving ASR result as json file.")
         save_segments(self.asr_segments, "asr_result.json")
+        return outfiles
 
 
 @dataclass
@@ -223,27 +223,17 @@ class Diarizer:
             postprocesses=(combine_same_speakers,),
         )
 
-        files_to_download = []
+        result_files = []
         print("Writing diarization result.")
         diarized_txt = _write_result(
             speaker_segments=self.diarized_segments,
             audio_filepath=self.audio.file_path,
             with_speakers=True)[0]
-        files_to_download.append(diarized_txt)
+        result_files.append(diarized_txt)
 
         print("Writing to docx.")
         doc = DocxGenerator()
         doc.txt_to_word(diarized_txt)
-        print(f"Downloading {doc.docfilename}")
-        download_from_colab(doc.docfilename)
-        # DL audio file
-        if self.audio.url:
-            files_to_download.append(self.audio.file_path)
+        result_files.append(doc.docfilename)
 
-        # Add asr result file (Workaround)
-        files_to_download.append(f"{self.audio.file_path}_timestamped.txt")
-        files_to_download.append(f"{self.audio.file_path}.txt")
-
-        for file in files_to_download:
-            print(f"Downloading {file}")
-            download_from_colab(file)
+        return result_files
