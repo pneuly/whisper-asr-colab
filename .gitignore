@@ -2,6 +2,7 @@ whisper_asr_colab/templates/*
 try*
 .vscode
 .pre-commit-config.yaml
+.secrets.baseline
 uv.lock
 build
 templates
