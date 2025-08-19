@@ -1,0 +1,37 @@
+name: Align branch name refs in .ipynb
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - '*.ipynb'
+  workflow_dispatch:
+
+jobs:
+  align-branch-refs-in-ipynb:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Replace branch names in all .ipynb files
+        run: |
+          CURRENT_BRANCH="${{ github.ref_name }}"
+          sed -i "s#\(https://.\+/pneuly/whisper-asr-colab/blob/\)[^/]\+\(/.\+\)#\1${CURRENT_BRANCH}\2#" *.ipynb
+
+      - name: Check for changes and commit
+        run: |
+          if [[ -n $(git status -s) ]]; then
+            echo "Changes detected. Committing..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add *.ipynb
+            git commit -m "chore: Align branch name references in .ipynb files"
+            git push
+          else
+            echo "No changes needed. Skipping commit."
+          fi
