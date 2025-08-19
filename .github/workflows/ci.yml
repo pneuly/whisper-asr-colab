@@ -28,8 +28,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
 
-      - name: Install module
-        run: uv add --dev pytest ipython ipywidgets
+      - name: Install modules
+        run: uv add --dev pytest ipython ipywidgets torch pyannote.audio>=3
 
       - name: Run pytest
         env:
