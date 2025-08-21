@@ -102,6 +102,10 @@ class Audio:
             sec = str2seconds(sec)
         self.end_frame = int(sec * self.sampling_rate)
 
+    @property
+    def length(self) -> float:
+        return len(self.ndarray) / self.sampling_rate
+
     @staticmethod
     def from_path_or_url(source: str) -> "Audio":
         if re.match(r"^(https://).+", source):
