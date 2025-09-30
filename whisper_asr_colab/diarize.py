@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class DiarizationPipeline:
     def __init__(
         self,
-        model_name: str = "pyannote/speaker-diarization-3.1",
+        model_name: str = "pyannote/speaker-diarization-community-1",
         use_auth_token: Optional[str] = None,
         device: Union[str, torch_device] = "auto",
     ):
@@ -23,7 +23,7 @@ class DiarizationPipeline:
         if isinstance(device, str):
             device = torch_device(device)
         self.pipeline = Pipeline.from_pretrained(
-            model_name, use_auth_token=use_auth_token).to(device)
+            model_name, token=use_auth_token).to(device)
 
     def __call__(
             self,
@@ -44,15 +44,15 @@ class DiarizationPipeline:
         hook = ProgressHook() if show_progress else None
         speaker_segments = []
         with hook or contextlib.nullcontext():
-            for time_segment, _, speaker in self.pipeline(
-                    audio_data, hook=hook,).itertracks(yield_label=True):
+            for turn, speaker in self.pipeline(audio_data, hook=hook).exclusive_speaker_diarization:
                 speaker_segments.append(
                     SpeakerSegment(
-                        start=time_segment.start,
-                        end=time_segment.end,
+                        start=turn.start,
+                        end=turn.end,
                         speaker=speaker
                     )
                 )
+
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"diarized_result: {speaker_segments}")
         return speaker_segments
