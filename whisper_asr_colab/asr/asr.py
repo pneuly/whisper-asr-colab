@@ -3,76 +3,47 @@ import sys
 import datetime
 from logging import getLogger, DEBUG
 from subprocess import Popen
-from typing import Union, Optional, Iterable, TextIO, BinaryIO, List, Any
+from typing import Union, Optional, Iterable, TextIO, BinaryIO, List, Any, ParamSpec
 import numpy as np
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 import ipywidgets as widgets
 from whisper_asr_colab.common.speakersegment import SpeakerSegment
 from whisper_asr_colab.common.utils import format_timestamp
 
-
 logger = getLogger(__name__)
 
 _Type_Prompt = Optional[Union[str, Iterable[int]]]
-
-# TODO provide AsrOptions class
-def load_model(
-    model_size: str = "large-v3-turbo",
-    device: str = "auto",
-    compute_type: str = "default",
-    ) -> FasterWhisperModel:
-    return FasterWhisperModel(
-        model_size_or_path=model_size,
-        device=device,
-        compute_type=compute_type)
+P = ParamSpec('P')
 
 def faster_whisper_transcribe(
-    audio: Union[str, BinaryIO, np.ndarray],
-    model: Optional[FasterWhisperModel] = None,
-    language: Optional[str] = None,
-    multilingual: bool = False,
-    initial_prompt: _Type_Prompt = None,
-    hotwords: Optional[str] = None,
-    chunk_length: int = 30,
-    batch_size: int = 1,
-    prefix: Optional[str] = None,
-    vad_filter: bool = False,
-    log_progress: bool = False,
-    ) -> tuple[List[SpeakerSegment], Any]:
-
-    logger.debug(f"VAD filter: {vad_filter}")
+        audio: Union[str, BinaryIO, np.ndarray],
+        model: Optional[FasterWhisperModel] = None,
+        **transcribe_args: P.kwargs
+) -> tuple[List[SpeakerSegment], Any]:
+    
+    transcribe_args["batch_size"] = transcribe_args["batch_size"] or 1
+    batch_size = transcribe_args["batch_size"]
     logger.debug(f"batch_size: {batch_size}")
-    if model is None:
-        model = FasterWhisperModel(
-            "large-v3-turbo",
-            device="auto",
-            compute_type="default",
-    )
+
+    model = model or FasterWhisperModel(
+                        "large-v3-turbo",
+                        device="auto",
+                        compute_type="default",
+                        )
+
     if batch_size > 1: # batch mode
         batched_model = BatchedInferencePipeline(model=model)
         segments_generator, info = batched_model.transcribe(
             audio=audio,
-            language=language,
-            #multilingual=multilingual,
-            initial_prompt=initial_prompt,
-            hotwords=hotwords,
-            prefix=prefix,
-            #chunk_length = chunk_length,  #  not implemented
-            batch_size=batch_size,
-            log_progress=log_progress,
+            **transcribe_args
         )
     else: # sequential mode
         logger.info(f"batch_size is set to less than 2 (batch_size={batch_size}). Using sequential mode.")
         segments_generator, info = model.transcribe(
             audio=audio,
-            language=language,
-            multilingual=multilingual,
-            vad_filter=vad_filter,
-            initial_prompt=initial_prompt,
-            hotwords=hotwords,
-            prefix=prefix,
-            condition_on_previous_text=False, # supress hallucination and repetitive text
+            condition_on_previous_text=False,
             without_timestamps=False,
+            **{k: v for k, v in transcribe_args.items() if k not in {"model", "batch_size"}},
         )
     segments = []
     with open("diarization_progress.txt", "w", encoding="utf-8", buffering=1) as f:

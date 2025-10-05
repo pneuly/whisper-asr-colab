@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, List
-from whisper_asr_colab.common.speakersegment import SpeakerSegment, assign_speakers, combine_same_speakers, load_segments
+from whisper_asr_colab.common.speakersegment import SpeakerSegment, assign_speakers, combine_same_speakers, load_segments, write_result
 from whisper_asr_colab.diarize.diarize import DiarizationPipeline
 
 @dataclass
@@ -10,7 +10,18 @@ class DiarizationWorker:
     diarized_segments: Optional[List[SpeakerSegment]] = None
     asr_segments: Optional[List[SpeakerSegment]] = None
 
-    def run(self, show_progress=True) -> List[SpeakerSegment]:
+    def run(self, show_progress=True) -> List[str]:
+        self.diarize(show_progress=show_progress)
+        self.integrate()
+        
+        print("Writing diarization result.")
+        return write_result(
+            self.diarized_segments,
+            self.audio.file_path,
+            True)
+
+
+    def diarize(self, show_progress=True) -> List[SpeakerSegment]:
         if self.audio.ndarray is None:
             raise ValueError("Audio must be specified in DiarizationWorker.audio.")
         dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token)

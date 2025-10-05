@@ -1,4 +1,5 @@
 #import logging
+# This module must be moved to common
 from pathlib import Path
 from docx import Document
 

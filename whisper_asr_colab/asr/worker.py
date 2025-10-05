@@ -1,47 +1,49 @@
-from dataclasses import dataclass
-from typing import Optional, List, Union, Iterable, Any
-from whisper_asr_colab.common.speakersegment import SpeakerSegment
-from whisper_asr_colab.asr.asr import load_model, faster_whisper_transcribe
+from collections import defaultdict
+from typing import DefaultDict, Optional, List, Any
+from faster_whisper import WhisperModel as FasterWhisperModel
+try:
+    from ..common.speakersegment import SpeakerSegment, write_result, save_segments
+    from .asr import faster_whisper_transcribe
+except ImportError:
+    from whisper_asr_colab.common.speakersegment import SpeakerSegment, write_result, save_segments
+    from whisper_asr_colab.asr.asr import faster_whisper_transcribe
 
-@dataclass
-class ASRWorker:
-    audio: Any  # Replace with your Audio type
-    model_size: str = "large-v3-turbo"
-    device: str = "auto"
-    language: Optional[str] = None
-    multilingual: bool = False
-    initial_prompt: Optional[Union[str, Iterable[int]]] = None
-    hotwords: Optional[str] = None
-    chunk_length: int = 30
-    batch_size: int = 1
-    prefix: Optional[str] = None
-    vad_filter: bool = False
-    log_progress: bool = False
-    model: Optional[Any] = None
-    asr_segments: Optional[List[SpeakerSegment]] = None
 
-    def load_model(self):
-        self.model = load_model(
-            model_size=self.model_size,
-            device=self.device,
-            compute_type="default",
+class ASRPipeline:
+    audio: Any
+    model: Optional[Any]
+    asr_segments: Optional[List[SpeakerSegment]]
+    transcribe_args: DefaultDict[str, int | int | bool]
+    def __init__(
+            self,
+            audio=None,
+            load_model_args: DefaultDict[str, str | int | bool] = defaultdict(str),
+            transcribe_args: DefaultDict[str, str | int | bool] = defaultdict(str),
+        ):
+        self.audio = audio
+        load_model_args = defaultdict(str, load_model_args)
+        self.model = FasterWhisperModel(
+            model_size_or_path = load_model_args["model_size_or_path"] or "turbo",
+            device = load_model_args["device"] or "auto",
+            compute_type=load_model_args["compute_type"] or "default", 
         )
+        self.transcribe_args = defaultdict(str, transcribe_args)
+
 
     def run(self) -> List[SpeakerSegment]:
-        if self.model is None:
-            self.load_model()
-        segments, _ = faster_whisper_transcribe(
+        """Wrapper for ASR and diarization"""
+        # Isolate the ASR process from diarization process
+        # because Pipeline of pyannote.audio crashes if faster whisper is called beforehand.
+        self.asr_segments, _ = faster_whisper_transcribe(
             audio=self.audio.ndarray,
             model=self.model,
-            language=self.language,
-            multilingual=self.multilingual,
-            initial_prompt=self.initial_prompt,
-            hotwords=self.hotwords,
-            chunk_length=self.chunk_length,
-            batch_size=self.batch_size,
-            prefix=self.prefix,
-            vad_filter=self.vad_filter,
-            log_progress=self.log_progress,
+            **self.transcribe_args
         )
-        self.asr_segments = segments
-        return segments
+
+        #outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
+        outfiles = write_result(self.asr_segments, self.audio.file_path)
+        del self.model
+
+        print("Saving ASR result as json file.")
+        save_segments(self.asr_segments, "asr_result.json")
+        return outfiles

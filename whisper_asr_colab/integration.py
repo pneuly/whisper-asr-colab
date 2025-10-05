@@ -39,4 +39,3 @@ class Pipeline:
         self.run_asr()
         self.run_diarization()
         return self.integrate()
-        return self.integrate()

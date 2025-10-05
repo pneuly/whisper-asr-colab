@@ -5,7 +5,8 @@ import time
 import logging
 import subprocess
 import numpy as np
-from typing import Union, Optional, Tuple, Callable
+import ffmpeg
+from typing import Union, Optional, Tuple, Callable, Any
 from dataclasses import dataclass
 from yt_dlp import YoutubeDL
 from .utils import str2seconds
@@ -15,69 +16,50 @@ logger = logging.getLogger(__name__)
 def default_upload_wait(x: int = 10) -> None:
     time.sleep(x)
 
-@dataclass
 class Audio:
-    url: Optional[str] = None
+    """Audio class to handle audio input from local file or internet url."""
     download_format: Optional[str] = None
     password: Optional[str] = None
-    file_path: Optional[str] = None
     sampling_rate: int = 16000
     start_frame: Optional[int] = None
     end_frame: Optional[int] = None
     verify_upload: bool = True
     upload_wait_func: Callable = default_upload_wait
+    _file_path: Optional[str] = None
+    _url: Optional[str] = None
     _rawdata: Optional[np.ndarray] = None
 
+    def __init__(
+        self,
+        **kwargs: Any
+    ):
+        for attr, value in kwargs.items():
+            if value is None or value == "":
+                continue
+            setattr(self, attr, value)
+
+
     @property
-    def ndarray(self) -> np.ndarray:
-        if self._rawdata is None:
-            _rawdata = self._load_audio()
-            return _rawdata[self.start_frame:self.end_frame]
+    def source(self) -> Optional[str]:
+        return self._url if self._url else self._file_path
+    
+    @source.setter
+    def source(self, source: str):
+        if source.startswith("https://"):
+            self._url = source
+            self._file_path = None
         else:
-            return self._rawdata[self.start_frame:self.end_frame]
-
-    def _load_audio(self) -> np.ndarray:
-        """Load audio to self._rawdata based on self.url or self.file_path.
-        Returns loaded audio data"""
-        if self.file_path is None and self.url is None:
-            raise ValueError("No url or file path set.")
-        if self.file_path is None or not os.path.exists(self.file_path):
-            logger.info(f"File path ({self.file_path}) is not set or file does not exist. Downloading audio.")
-            self.file_path = dl_audio(self.url, self.download_format, self.password) # type: ignore
-        logger.info(f"Loading audio file {self.file_path} ({os.path.getsize(self.file_path)/1000000:.02f}MB)")
-        # Check if the uploading is finished.
-        # self.upload_wait_func is used to wait for the check.
-        if self.verify_upload:
-            logger.info(f"Checking if uploading {self.file_path} is still uploading.")
-            uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.file_path, self.upload_wait_func)
-            if uploading_flag:
-                logger.info(f"File size increase is detected in {wait_time:.02f} seconds.")
-                message = f"{self.file_path} seems still uploading. Waiting until upload finished."
-                if 'IPython' in sys.modules:
-                    display = sys.modules["IPython"].display
-                    display.display(display.HTML(f'<div style="color: red; font-size:large; font-weight: bold;">⚠️ {message}</div>'))
-                uploading_flag = True
-                while uploading_flag:
-                    uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.file_path, lambda x=10: time.sleep(x))
-                    logger.info(f"Uploaded size: {filesize2 / 1000000}MB ({(filesize2 - filesize1) / (wait_time * 1000):.01f} kB/s)")
-            else:
-                logger.info(f"No file size increase is detected in {wait_time:.02f} seconds.")
-        _rawdata = decode_audio(self.file_path, self.sampling_rate)
-        if not isinstance(_rawdata, np.ndarray):
-            raise ValueError("Failed to get audio data. Check if url or file path is correctly set.")
-        self._rawdata = _rawdata
-        return self._rawdata
-
-    ## TODO  def write_data()
+            self._file_path = source
+            self._url = None
+        self._rawdata = None
 
     @property
-    def live_stream(self) -> subprocess.Popen:
-        if not self.url:
-            raise ValueError("No url set.")
-        command = ["yt-dlp", "-g", self.url, "-x", "-S", "+acodec:mp4a", "-q"]
-        audio_url = subprocess.check_output(command).decode("utf-8").strip()
-        return decode_audio_pipe(audio_url, 16000)
+    def file_path(self) -> str:
+        return self._file_path
 
+    @property
+    def url(self) -> str:
+        return self._url
 
     @property
     def start_time(self) -> float:
@@ -106,12 +88,55 @@ class Audio:
     def length(self) -> float:
         return len(self.ndarray) / self.sampling_rate
 
-    @staticmethod
-    def from_path_or_url(source: str) -> "Audio":
-        if re.match(r"^(https://).+", source):
-            return Audio(url=source)
+    @property
+    def ndarray(self) -> np.ndarray:
+        if self._rawdata is None:
+            _rawdata = self._load_audio()
+            return _rawdata[self.start_frame:self.end_frame]
         else:
-            return Audio(file_path=source)
+            return self._rawdata[self.start_frame:self.end_frame]
+
+    def _load_audio(self) -> np.ndarray:
+        """Load audio to self._rawdata based on self._url or self._file_path.
+        Returns loaded audio data"""
+        if self._file_path is None and self._url is None:
+            raise ValueError("No audio source is set.")
+        if self._file_path is None or not os.path.exists(self._file_path):
+            logger.info(f"File path ({self._file_path}) is not set or file does not exist. Downloading audio.")
+            self._file_path = dl_audio(self._url, self.download_format, self.password) # type: ignore
+        logger.info(f"Loading audio file {self._file_path} ({os.path.getsize(self._file_path)/1000000:.02f}MB)")
+        # Check if the uploading is finished.
+        # self.upload_wait_func is used to wait for the check.
+        if self.verify_upload:
+            logger.info(f"Checking if uploading {self._file_path} is still uploading.")
+            uploading_flag, filesize1, filesize2, wait_time = is_uploading(self._file_path, self.upload_wait_func)
+            if uploading_flag:
+                logger.info(f"File size increase is detected in {wait_time:.02f} seconds.")
+                message = f"{self._file_path} seems still uploading. Waiting until upload finished."
+                if 'IPython' in sys.modules:
+                    display = sys.modules["IPython"].display
+                    display.display(display.HTML(f'<div style="color: red; font-size:large; font-weight: bold;">⚠️ {message}</div>'))
+                uploading_flag = True
+                while uploading_flag:
+                    uploading_flag, filesize1, filesize2, wait_time = is_uploading(self._file_path, lambda x=10: time.sleep(x))
+                    logger.info(f"Uploaded size: {filesize2 / 1000000}MB ({(filesize2 - filesize1) / (wait_time * 1000):.01f} kB/s)")
+            else:
+                logger.info(f"No file size increase is detected in {wait_time:.02f} seconds.")
+        _rawdata = decode_audio(self._file_path, self.sampling_rate)
+        if not isinstance(_rawdata, np.ndarray):
+            raise ValueError("Failed to get audio data. Check if url or file path is correctly set.")
+        self._rawdata = _rawdata
+        return self._rawdata
+
+
+    @property
+    def live_stream(self) -> subprocess.Popen:
+        if not self._url:
+            raise ValueError("No url set.")
+        command = ["yt-dlp", "-g", self._url, "-x", "-S", "+acodec:mp4a", "-q"]
+        audio_url = subprocess.check_output(command).decode("utf-8").strip()
+        return decode_audio_pipe(audio_url, 16000)
+
 
     def set_silence_skip(
         self,
@@ -217,7 +242,21 @@ def is_uploading(
     return False, filesize, filesize2, wait_time
 
 
+def convert_audio(input_file: str, ext: str, overwrite: bool = True):
+    """Convert audio file to the specified format using ffmpeg."""
+    if not input_file.endswith(ext):
+        base_name = os.path.splitext(input_file)[0]
+        output_file = f"{base_name}.{ext}"
+        ffmpeg.run(
+            ffmpeg.input(input_file).output(output_file),
+            overwrite_output=overwrite
+        )
+        return output_file
+    print("No conversion is needed.")
+    return input_file
+
 def subprocess_progress(cmd: list):
+    # TODO: move to utils
     p = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=False
     )

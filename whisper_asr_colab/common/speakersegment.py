@@ -1,232 +1,209 @@
-import time
-import sys
-import os
-import logging
-from datetime import datetime
-from dataclasses import dataclass, field
+from __future__ import annotations
+from json import dump as jsondump, load as jsonload
+from itertools import groupby
 from collections import defaultdict
-from typing import Optional, Union, Iterable, Tuple, List, DefaultDict, Any
-import ffmpeg
-from .docx_generator import DocxGenerator
-from .audio import Audio
-from .utils import str2seconds
-from whisper_asr_colab.common import speakersegment
+from dataclasses import dataclass, field, asdict
+from typing import Union, Optional, DefaultDict, List, Iterable
+from faster_whisper.transcribe import Segment
+from .utils import str2seconds, format_timestamp
+from logging import getLogger
 
-def _write_result(speaker_segments, audio_filepath=None, timestamp_offset=0.0, with_speakers=False):
-    if audio_filepath:
-        outfilename = audio_filepath
-    else:
-        outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return speakersegment.write_result(
-        speaker_segments,
+logger = getLogger(__name__)
+
+@dataclass
+class SpeakerSegment(Segment):
+    id: int = field(default=0)
+    seek: int = field(default=0)
+    start: float = field(default=0.0)
+    end: float = field(default=0.0)
+    text: str = field(default="")
+    tokens: List[int] = field(default_factory=list)
+    temperature: Optional[float] = field(default=None)
+    avg_logprob: float = field(default=0.0)
+    compression_ratio: float = field(default=0.0)
+    no_speech_prob: float = field(default=0.0)
+    words: Optional[list] = field(default=None)
+    speaker: Optional[str] = field(default=None)
+
+    @property
+    def duration(self):
+        return(self.end - self.start)
+
+    @classmethod
+    def from_segment(cls, segment: Segment) -> SpeakerSegment:
+        return cls(**segment.__dict__)
+
+
+    def shift_time(self, offset: Union[int, float]):
+        self.start += offset
+        self.end += offset
+
+
+    def time_segment_text(
+            self,
+            timestamp_offset: Optional[Union[int, float, str]] = 0.0
+            ) -> str:
+        """Create a segment string '[H:MM:SS.ss - H:MM:SS.ss]' from a segment."""
+        if timestamp_offset is None:
+            timestamp_offset = 0.0
+        _offset_seconds = str2seconds(timestamp_offset) if isinstance(timestamp_offset, str) else timestamp_offset
+        start = self.start + _offset_seconds
+        end = self.end + _offset_seconds
+        return (f"[{format_timestamp(start)} - {format_timestamp(end)}]")
+
+
+    def add_timestamp(
+            self,
+            timestamp_offset: Optional[Union[int, float, str]] = 0.0
+            ) -> str:
+        """Create a string '[H:MM:SS.ss - H:MM:SS.ss] {segment.text}' from a segment."""
+        return (f"{self.time_segment_text(timestamp_offset)} {self.text.strip()}")
+
+
+def combine(segments: List[SpeakerSegment]) -> SpeakerSegment:
+        """Combine list of SpeakerSegment into a single SpeakerSegment"""
+        head_seg = segments[0]
+        combined_seg = SpeakerSegment(
+                id = head_seg.id,
+                seek = head_seg.seek,
+                start = head_seg.start, # combined
+                end = segments[-1].end, # combined
+                text = "\n".join(str(seg.text) for seg in segments).strip(), # combined
+                #tokens = [token for seg in self for token in seg.tokens],
+                tokens = [],  #strip tokens to reduce the use of memory
+                temperature = head_seg.temperature,
+                avg_logprob = head_seg.avg_logprob,
+                compression_ratio = head_seg.compression_ratio,
+                no_speech_prob = head_seg.no_speech_prob,
+                words = None,
+                speaker = head_seg.speaker,
+            )
+        return combined_seg
+
+
+def combine_same_speakers(segments: List[SpeakerSegment]) -> None:
+    """Combine consecutive segments that have same speaker into a segment (in place)"""
+    speakersegs = []
+    for k, g in groupby(segments, lambda x: x.speaker):
+        speakersegs.append(combine(list(g)))
+    segments[:] = speakersegs # in place
+
+
+def fill_missing_speakers(segments: List[SpeakerSegment]) -> None:
+    """If segment.speaker is None, fill with the speaker of the previous segment"""
+    for i in range(1, len(segments)):
+        if segments[i].speaker is None:
+            segments[i].speaker = segments[i-1].speaker
+
+
+def assign_speakers(
+        asr_segments: List[SpeakerSegment],  # faster whisper asr result,
+        diarization_result: List[SpeakerSegment],  # pyannote diarization result
+        postprocesses : Iterable = [], # List of post process functions
+    ) -> List[SpeakerSegment]:
+    """Assign speakers for to ASR result based on diarization result"""
+
+    dia_segments_size = len(diarization_result) - 1
+    i = 0
+    durations: DefaultDict[str, float] = defaultdict(float)
+    diarized_segs = []
+    for asr_seg in asr_segments:
+        while i <= dia_segments_size:
+            dia_seg = diarization_result[i]
+            logger.debug(f"i:{i} speaker:{dia_seg.speaker} dia_seg.start:{dia_seg.start:.2f} dia_seg.end:{dia_seg.end:.2f}")
+            if asr_seg.end < dia_seg.start:  # run out of the target segment
+                break
+            # calc overlap duration of asr and diarization
+            start = max(asr_seg.start, dia_seg.start)
+            end = min(asr_seg.end, dia_seg.end)
+            duration = end - start
+            if dia_seg.speaker and duration > 0.0:
+                durations[dia_seg.speaker] += duration
+            i += 1
+        # assign the speaker who have longest overlap in each segment
+        asr_seg.speaker = max(durations, key=lambda k : durations.get(k, 0.0), default=None)
+
+        #logger.debug(f"{asr_seg.text}")
+        #if durations:
+        #    for key, value in durations.items():
+        #        print(f"{key} : {value}")
+        #else:
+        #    logger.debug("empty durations")
+        #logger.debug("\n")
+
+        diarized_segs.append(asr_seg)
+        durations.clear()
+        i -= 1
+    for _func in postprocesses:
+        _func(diarized_segs)
+    return diarized_segs
+
+
+def write_result(
+        segments : List[SpeakerSegment],
+        outfilename: str,
+        with_speakers: bool = False,
+        timestamp_offset: Union[int, float, str] = 0.0
+        ) -> tuple[str, ...]:
+    """ write results to text files """
+    _write_func = (
+        write_asr_result_with_speakers if with_speakers
+        else write_asr_result
+    )
+    return _write_func(
+        segments,
         outfilename,
-        with_speakers,
         timestamp_offset,
     )
 
-@dataclass
-class Worker:
-    # core parameters
-    audio: Audio
-    model_size: str = "large-v3-turbo"
-    device: str = "auto"
 
-    # transcribe options
-    model = None
-    language: Optional[str] = None
-    multilingual: bool = False
-    initial_prompt: Optional[Union[str, Iterable[int]]] = None
-    hotwords: Optional[str] = None
-    chunk_length: int = 30
-    batch_size: int = 16
-    prefix: Optional[str] = None
-    vad_filter: bool = False
-    log_progress: bool = False
-
-    # other options
-    diarization: bool = True
-    hugging_face_token: str = ""
-    password: str = ""
-    realtime: bool = False
-    skip_silence: bool = True  # If True, skip the leading silence of the audio
-    _timestamp_offset: float = 0.0
-
-    #result data
-    asr_segments: Optional[List[speakersegment.SpeakerSegment]] = None  # result from whisper
-    diarized_segments: Optional[List[speakersegment.SpeakerSegment]] = None  # result from pyannote
-    elapsed_time: DefaultDict[str, float] = field(default_factory=lambda: defaultdict(float))
-
-    @property
-    def timestamp_offset(self) -> float:
-        return self._timestamp_offset
-
-    @timestamp_offset.setter
-    def timestamp_offset(self, sec : Union[str, int, float]):
-        if isinstance(sec, str):
-            sec = str2seconds(sec)
-        self._timestamp_offset = sec
-
-    def __post_init__(self):
-
-        self.logger = logging.getLogger(__name__)
-        if isinstance(self.audio, str):
-            self.audio = Audio.from_path_or_url(self.audio)
-        if self.password:
-            self.audio.password = self.password
-        if self.realtime:
-            self.logger.info("`skip_silence` is disabled since `realtime` mode is enabled.")
-            self.skip_silence = False
-        # Use model loading as waiting function since using time.sleep is just waste of time.
-        # set_silence_skip() calls audio._load_audio(), so upload_wait_func must be set before
-        # calling set_silence_skip().
-        #self.audio.upload_wait_func = self.load_model
-        self.audio.upload_wait_func = lambda : time.sleep(5)
-        if self.skip_silence:
-            self.audio.set_silence_skip()
-
-    def load_model(self):
-        from .asr import load_model as _load_model
-        self.model = _load_model(
-            self.model_size,
-            device=self.device,
-            compute_type="default",
-        )
-
-    def transcribe(self) -> List[speakersegment.SpeakerSegment]:
-        """Wrapper for faster-whisper transcription.
-        Automatically sets the inference if not explicitly specified.
-        Switches between normal transcription and real-time transcription based on the value of `self.realtime`.
-        """
-        # Transcribe
-        if self.model is None:
-            self.load_model()
-        if self.realtime: # realtime trascription
-            self.logger.error("Real time transcription is temporarily disabled.")
-        else:  # normal transcription
-            segments, _ = self.call_faster_whisper_transcribe()
-        self.asr_segments = segments
-        return self.asr_segments
+def write_asr_result(
+        segments : List[SpeakerSegment],
+        basename: str,
+        timestamp_offset: Optional[Union[int, float, str]] = 0.0
+        ) -> tuple[str, ...]:
+    """Write ASR segments to files with and without timestamps.
+    Returns filenames.
+    """
+    outfilenames = (f"{basename}.txt", f"{basename}_timestamped.txt")
+    fh_text, fh_timestamped = [
+        open(filename, "w", encoding="utf-8") for filename in outfilenames
+    ]
+    for data in segments:
+        fh_text.write(data.text + "\n")
+        fh_timestamped.write(data.add_timestamp(timestamp_offset) + "\n")
+    fh_text.close()
+    fh_timestamped.close()
+    return outfilenames
 
 
-    def call_faster_whisper_transcribe(
-            self,
-            start_time: Union[int, float, None] = None,
-            end_time: Union[int, float, None] = None,) -> Tuple[List[speakersegment.SpeakerSegment], Any]:
-        """Used by `transcribe()` to call faster-whisper transcribe function."""
-        from .asr import faster_whisper_transcribe
-        if self.audio.ndarray is None:
-            raise ValueError("Audio must be set in worker.audio.")
-        _start = start_time if start_time else self.audio.start_time
-        _end = end_time if end_time else self.audio.end_time
-        self.logger.info(f"Transcribing from {_start} to {_end}")
-        segments, _ = faster_whisper_transcribe(
-                audio=self.audio.get_time_slice(_start, _end),
-                model=self.model,
-                language = self.language,
-                multilingual=self.multilingual,
-                initial_prompt=self.initial_prompt,
-                hotwords = self.hotwords,
-                prefix = self.prefix,
-                vad_filter=self.vad_filter,
-                #chunk_length=self.chunk_length,
-                batch_size=self.batch_size,
-            )
-        if segments and _start:
-            for item in segments:
-                item.shift_time(_start)
-        return segments, _
+def write_asr_result_with_speakers(
+        segments,
+        basename: str,
+        timestamp_offset: Optional[Union[int, float, str]] = 0.0
+        ) -> tuple[str, ...]:
+    """Write diarized transcpript to a text file."""
+    outfilename = f"{basename}_diarized.txt"
+    fh = open(outfilename, "w", encoding="utf-8")
+    for data in segments:
+        fh.write(data.time_segment_text(timestamp_offset) + " ")
+        if data.speaker:
+            fh.write(data.speaker + "\n")
+        else:
+            fh.write("\n")
+        fh.write(data.text.replace(" ", "") + "\n\n")
+    fh.close()
+    return (outfilename,)
 
 
-    #def extract_future(self):
-    #    if self.model is None:
-    #        self.load_model()
-    #    #if isinstance(self.model, FasterWhisperModel):
-    #    #    feature = self.model.feature_extractor(self.audio.ndarray)
-    #    #    self.model.feature_extractor.__call__ = lambda waveform, padding=160, chunk_length=None: feature
-    #    #else:
-    #    #    raise ValueError("Model is not loaded.")
-
-    # TODO run upload/download processes (audio, model and others) simultaneously
-    # TODO minimize log output to screen
-    # TODO calc execution time
-
-    def run_and_measure(self, func, *args, **kargs):
-        func_name = func.__name__
-        self.logger.info(f"Excecuting {func_name}.")
-        start = time.time()
-        result = func(*args, **kargs)
-        end = time.time()
-        elapsed = end - start
-        self.elapsed_time[func_name] =elapsed
-        sys.stdout.flush()
-        self.logger.info(f"Executed {func_name} in {elapsed:.2f}s")
-        return result
-
-    def run(self):
-        """Wrapper for ASR and diarization"""
-        # Isolate the ASR process from diarization process
-        # because Pipeline of pyannote.audio crashes if faster whisper is called beforehand.
-        self.transcribe()
-        outfiles = _write_result(self.asr_segments, self.audio.file_path)
-        del self.model
-
-        print("Saving ASR result as json file.")
-        speakersegment.save_segments(self.asr_segments, "asr_result.json")
-        return outfiles
+def save_segments(segments, jsonfile: str):
+    """Save segments to a JSON file."""
+    with open(jsonfile, 'w') as fh:
+        jsondump([asdict(segment) for segment in segments], fh)
 
 
-@dataclass
-class Diarizer:
-    audio: Audio
-    # other options
-    hugging_face_token: str = ""
-    diarized_segments: Optional[List[speakersegment.SpeakerSegment]] = None
-    asr_segments: Optional[List[speakersegment.SpeakerSegment]] = None
-
-    def __post_init__(self):
-        self.logger = logging.getLogger(__name__)
-
-    def diarize(self, show_progress=True): # -> List[SpeakerSegment]:
-        self.logger.debug("Diarizing.")
-        from .diarize import DiarizationPipeline
-        if self.audio.ndarray is None:
-            raise ValueError("Audio must be specified in diarizer.audio.")
-        dpipe = DiarizationPipeline(use_auth_token=self.hugging_face_token) ## crashes here
-        print("dpipe is ready.", flush=True)
-        segments = dpipe(
-            audio=self.audio.ndarray,
-            show_progress=show_progress,
-        )
-        print("diarization finished.", flush=True)
-        if segments and self.audio.start_time:
-            for item in segments:
-                item.shift_time(self.audio.start_time)
-        self.diarized_segments = segments
-        return self.diarized_segments
-
-    def integrate(self):
-        if not self.asr_segments:
-            self.asr_segments = speakersegment.load_segments("asr_result.json")
-            #raise ValueError("self.asr_segments is empty.")
-        if not self.diarized_segments:
-            raise ValueError("self.diarized_segments is empty.")
-        self.diarized_segments = speakersegment.assign_speakers(
-            asr_segments=self.asr_segments,
-            diarization_result=self.diarized_segments,
-            postprocesses=(speakersegment.combine_same_speakers,),
-        )
-
-        result_files = []
-        print("Writing diarization result.")
-        diarized_txt = _write_result(
-            speaker_segments=self.diarized_segments,
-            audio_filepath=self.audio.file_path,
-            with_speakers=True)[0]
-        result_files.append(diarized_txt)
-
-        print("Writing to docx.")
-        doc = DocxGenerator()
-        doc.txt_to_word(diarized_txt)
-        result_files.append(doc.docfilename)
-
-        return result_files
+def load_segments(jsonfile: str) -> List[SpeakerSegment]:
+    """Load segments from a JSON file."""
+    with open(jsonfile, 'r') as fh:
+        data_list = jsonload(fh)
+    return [SpeakerSegment(**data) for data in data_list]
