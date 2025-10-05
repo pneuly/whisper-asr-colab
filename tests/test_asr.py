@@ -1,6 +1,6 @@
-from whisper_asr_colab.asr import faster_whisper_transcribe
+from whisper_asr_colab.asr.asr import faster_whisper_transcribe
+from whisper_asr_colab.asr.audio import Audio
 from faster_whisper import WhisperModel as FasterWhisperModel
-from whisper_asr_colab.audio import Audio
 
 def perform_asr(audio:str, batch_size:int):
     model = FasterWhisperModel("tiny")

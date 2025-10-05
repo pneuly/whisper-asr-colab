@@ -1,4 +1,4 @@
-# (Delete this file; all code is now in diarize/diarize.py)
+import logging
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy
 from typing import List, Union, Optional, BinaryIO
@@ -6,7 +6,7 @@ from numpy import ndarray
 import contextlib
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from .speakersegment import SpeakerSegment
+from whisper_asr_colab.common.speakersegment import SpeakerSegment
 
 logger = logging.getLogger(__name__)
 

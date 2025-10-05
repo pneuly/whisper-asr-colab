@@ -1,4 +1,4 @@
-# (Delete this file; logic is now in asr/worker.py, diarize/worker.py, and integration.py)
+import time
 import sys
 import os
 import logging
@@ -10,21 +10,14 @@ import ffmpeg
 from .docx_generator import DocxGenerator
 from .audio import Audio
 from .utils import str2seconds
-from .speakersegment import (
-    SpeakerSegment,
-    assign_speakers,
-    combine_same_speakers,
-    write_result,
-    save_segments,
-    load_segments,
-)
+from whisper_asr_colab.common import speakersegment
 
 def _write_result(speaker_segments, audio_filepath=None, timestamp_offset=0.0, with_speakers=False):
     if audio_filepath:
         outfilename = audio_filepath
     else:
         outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return write_result(
+    return speakersegment.write_result(
         speaker_segments,
         outfilename,
         with_speakers,
@@ -59,8 +52,8 @@ class Worker:
     _timestamp_offset: float = 0.0
 
     #result data
-    asr_segments: Optional[List[SpeakerSegment]] = None  # result from whisper
-    diarized_segments: Optional[List[SpeakerSegment]] = None  # result from pyannote
+    asr_segments: Optional[List[speakersegment.SpeakerSegment]] = None  # result from whisper
+    diarized_segments: Optional[List[speakersegment.SpeakerSegment]] = None  # result from pyannote
     elapsed_time: DefaultDict[str, float] = field(default_factory=lambda: defaultdict(float))
 
     @property
@@ -99,7 +92,7 @@ class Worker:
             compute_type="default",
         )
 
-    def transcribe(self) -> List[SpeakerSegment]:
+    def transcribe(self) -> List[speakersegment.SpeakerSegment]:
         """Wrapper for faster-whisper transcription.
         Automatically sets the inference if not explicitly specified.
         Switches between normal transcription and real-time transcription based on the value of `self.realtime`.
@@ -118,7 +111,7 @@ class Worker:
     def call_faster_whisper_transcribe(
             self,
             start_time: Union[int, float, None] = None,
-            end_time: Union[int, float, None] = None,) -> Tuple[List[SpeakerSegment], Any]:
+            end_time: Union[int, float, None] = None,) -> Tuple[List[speakersegment.SpeakerSegment], Any]:
         """Used by `transcribe()` to call faster-whisper transcribe function."""
         from .asr import faster_whisper_transcribe
         if self.audio.ndarray is None:
@@ -178,7 +171,7 @@ class Worker:
         del self.model
 
         print("Saving ASR result as json file.")
-        save_segments(self.asr_segments, "asr_result.json")
+        speakersegment.save_segments(self.asr_segments, "asr_result.json")
         return outfiles
 
 
@@ -187,8 +180,8 @@ class Diarizer:
     audio: Audio
     # other options
     hugging_face_token: str = ""
-    diarized_segments: Optional[List[SpeakerSegment]] = None
-    asr_segments: Optional[List[SpeakerSegment]] = None
+    diarized_segments: Optional[List[speakersegment.SpeakerSegment]] = None
+    asr_segments: Optional[List[speakersegment.SpeakerSegment]] = None
 
     def __post_init__(self):
         self.logger = logging.getLogger(__name__)
@@ -213,14 +206,14 @@ class Diarizer:
 
     def integrate(self):
         if not self.asr_segments:
-            self.asr_segments = load_segments("asr_result.json")
+            self.asr_segments = speakersegment.load_segments("asr_result.json")
             #raise ValueError("self.asr_segments is empty.")
         if not self.diarized_segments:
             raise ValueError("self.diarized_segments is empty.")
-        self.diarized_segments = assign_speakers(
+        self.diarized_segments = speakersegment.assign_speakers(
             asr_segments=self.asr_segments,
             diarization_result=self.diarized_segments,
-            postprocesses=(combine_same_speakers,),
+            postprocesses=(speakersegment.combine_same_speakers,),
         )
 
         result_files = []
