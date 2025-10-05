@@ -156,4 +156,3 @@ def realtime_transcribe(
             time.sleep(0.1)
     fh1.close()
     return [SpeakerSegment.from_segment(segment) for segment in segments]
-    return [SpeakerSegment.from_segment(segment) for segment in segments]
