@@ -16,7 +16,6 @@ logger = getLogger(__name__)
 _Type_Prompt = Optional[Union[str, Iterable[int]]]
 
 # TODO provide AsrOptions class
-@staticmethod
 def load_model(
     model_size: str = "large-v3-turbo",
     device: str = "auto",
@@ -48,7 +47,7 @@ def faster_whisper_transcribe(
             "large-v3-turbo",
             device="auto",
             compute_type="default",
-    )
+        )
     if batch_size > 1: # batch mode
         batched_model = BatchedInferencePipeline(model=model)
         segments_generator, info = batched_model.transcribe(
@@ -79,7 +78,7 @@ def faster_whisper_transcribe(
     with open("diarization_progress.txt", "w", encoding="utf-8", buffering=1) as f:
         for segment in segments_generator:
             segment_text = f"[{format_timestamp(segment.start, '02.0f')} - {format_timestamp(segment.end, '02.0f')}] {segment.text}"
-            #print(segment_text)
+            #logger.debug(f"Segment: {segment_text}")
             f.write(segment_text + "\n")
             segments.append(SpeakerSegment.from_segment(segment))
     if logger.isEnabledFor(DEBUG):

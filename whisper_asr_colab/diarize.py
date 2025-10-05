@@ -19,7 +19,7 @@ class DiarizationPipeline:
     ):
         if device == "auto":
             device = "cuda" if cuda_is_available() else "cpu"
-            logging.info(f"Using device {device}")
+            logger.info(f"Auto-selected device: {device}")
         if isinstance(device, str):
             device = torch_device(device)
         self.pipeline = Pipeline.from_pretrained(
