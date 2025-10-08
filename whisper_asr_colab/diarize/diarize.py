@@ -1,7 +1,7 @@
 import logging
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy
-from typing import List, Union, Optional, BinaryIO
+from typing import List, Union, Optional, BinaryIO, Any
 from numpy import ndarray
 import contextlib
 from pyannote.audio import Pipeline
@@ -10,49 +10,43 @@ from whisper_asr_colab.common.speakersegment import SpeakerSegment
 
 logger = logging.getLogger(__name__)
 
-class DiarizationPipeline:
-    def __init__(
-        self,
-        model_name: str = "pyannote/speaker-diarization-community-1",
-        use_auth_token: Optional[str] = None,
-        device: Union[str, torch_device] = "auto",
-    ):
-        if device == "auto":
-            device = "cuda" if cuda_is_available() else "cpu"
-            logger.info(f"Auto-selected device: {device}")
-        if isinstance(device, str):
-            device = torch_device(device)
-        self.pipeline = Pipeline.from_pretrained(
-            model_name, token=use_auth_token).to(device)
+def diarize(
+        audio: Union[str, BinaryIO, ndarray],
+        model_name: Optional[str] = "pyannote/speaker-diarization-community-1",
+        hf_token: str = "",
+        device: Optional[str] = "auto",
+        show_progress: bool = True,
+        hyperparams: Optional[dict] = None,
+     ) -> List[SpeakerSegment]:
 
-    def __call__(
-            self,
-            audio: Union[str, ndarray, BinaryIO],
-            min_duration_on: float = 1.5,  # remove speech regions shorter than this seconds.
-            min_duration_off: float = 1.5,  # fill non-speech regions shorter than this seconds.
-            show_progress: bool = True,
-            ) -> List[SpeakerSegment]:
-        if isinstance(audio, ndarray):
-            audio_data = {"waveform": from_numpy(audio[None, :]), "sample_rate": 16000}
-        #elif isinstance(audio, str):
-        #    audio_data = {'uri': 'audio_stream', 'audio': BytesIO(read_audio(audio, format="wav").stdout.read())}
-        else:
-            audio_data = {'uri': 'audio_stream', 'audio': audio}
+    if device == "auto":
+        device = "cuda" if cuda_is_available() else "cpu"
+        logger.info(f"Auto-selected device: {device}")
+    if isinstance(device, str):
+        device = torch_device(device)
+             
+    pipeline = Pipeline.from_pretrained(
+            model_name, token=hf_token).to(device)
+    if hyperparams:
+         pipeline.instantiate(hyperparams)
+         
+    if isinstance(audio, ndarray):
+        audio_data = {"waveform": from_numpy(audio[None, :]), "sample_rate": 16000}    
+    else:
+        audio_data = {'uri': 'audio_stream', 'audio': audio}
 
-        self.pipeline.min_duration_on = min_duration_on
-        self.pipeline.min_duration_off = min_duration_off
-        hook = ProgressHook() if show_progress else None
-        speaker_segments = []
-        with hook or contextlib.nullcontext():
-            for turn, speaker in self.pipeline(audio_data, hook=hook).exclusive_speaker_diarization:
-                speaker_segments.append(
-                    SpeakerSegment(
-                        start=turn.start,
-                        end=turn.end,
-                        speaker=speaker
-                    )
+    hook = ProgressHook() if show_progress else None
+    speaker_segments = []
+    with hook or contextlib.nullcontext():
+        for turn, speaker in pipeline(audio_data, hook=hook).exclusive_speaker_diarization:
+            speaker_segments.append(
+                SpeakerSegment(
+                    start=turn.start,
+                    end=turn.end,
+                    speaker=speaker
                 )
+            )
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"diarized_result: {speaker_segments}")
-        return speaker_segments
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"diarized_result: {speaker_segments}")
+    return speaker_segments

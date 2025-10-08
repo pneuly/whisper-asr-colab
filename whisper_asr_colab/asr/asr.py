@@ -1,6 +1,5 @@
 from logging import getLogger, DEBUG
 from typing import Union, Optional, BinaryIO, List, Any
-import numpy as np
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from whisper_asr_colab.common.speakersegment import SpeakerSegment
 from whisper_asr_colab.common.utils import format_timestamp
@@ -8,7 +7,7 @@ from whisper_asr_colab.common.utils import format_timestamp
 logger = getLogger(__name__)
 
 def faster_whisper_transcribe(
-        audio: Union[str, BinaryIO, np.ndarray],
+        audio: Union[str, BinaryIO, "numpy.ndarray"],
         model: Optional[FasterWhisperModel] = None,
         **transcribe_args: Any
     ) -> tuple[List[SpeakerSegment], Any]:

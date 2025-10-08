@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import DefaultDict, Optional, List, Union, BinaryIO, Any
+from typing import DefaultDict, Optional, List, Union, BinaryIO
 from faster_whisper import WhisperModel as FasterWhisperModel
 try:
     from ..common.speakersegment import SpeakerSegment, write_result, save_segments
