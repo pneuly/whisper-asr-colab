@@ -1,11 +1,17 @@
 from dataclasses import dataclass
 from typing import Optional, List
-from whisper_asr_colab.common.speakersegment import SpeakerSegment, assign_speakers, combine_same_speakers, load_segments, write_result
-from whisper_asr_colab.diarize.diarize import DiarizationPipeline
+try:
+    from ..common.speakersegment import SpeakerSegment, assign_speakers, combine_same_speakers, load_segments, write_result
+    from ..common.audio import Audio
+    from .diarize import DiarizationPipeline
+except ImportError:
+    from whisper_asr_colab.common.speakersegment import SpeakerSegment, assign_speakers, combine_same_speakers, load_segments, write_result
+    from whisper_asr_colab.common.audio import Audio
+    from whisper_asr_colab.diarize.diarize import DiarizationPipeline
 
 @dataclass
 class DiarizationWorker:
-    audio: any  # Replace 'any' with your Audio type
+    audio: Audio
     hugging_face_token: str = ""
     diarized_segments: Optional[List[SpeakerSegment]] = None
     asr_segments: Optional[List[SpeakerSegment]] = None
@@ -17,7 +23,7 @@ class DiarizationWorker:
         print("Writing diarization result.")
         return write_result(
             self.diarized_segments,
-            self.audio.file_path,
+            self.audio.local_file_path,
             True)
 
 

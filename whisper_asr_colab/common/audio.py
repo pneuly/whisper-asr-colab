@@ -6,7 +6,7 @@ import logging
 import subprocess
 import numpy as np
 import ffmpeg
-from typing import Union, Optional, Tuple, Callable, Any
+from typing import Union, Optional, Tuple, Callable, Any, TypeVar
 from dataclasses import dataclass
 from yt_dlp import YoutubeDL
 from .utils import str2seconds
@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
 def default_upload_wait(x: int = 10) -> None:
     time.sleep(x)
 
+T = TypeVar('T', bound='Audio')
 class Audio:
     """Audio class to handle audio input from local file or internet url."""
+    _source: str | T  # To read this value, use .source property
     download_format: Optional[str] = None
     password: Optional[str] = None
     sampling_rate: int = 16000
@@ -25,41 +27,45 @@ class Audio:
     end_frame: Optional[int] = None
     verify_upload: bool = True
     upload_wait_func: Callable = default_upload_wait
-    _file_path: Optional[str] = None
-    _url: Optional[str] = None
+    is_remote: Optional[bool] = None
+    _local_file_path: Optional[str] = None
     _rawdata: Optional[np.ndarray] = None
 
+    def __new__(cls, *args, **kwargs):
+        if args and isinstance(args[0], cls):
+            # if source is an instance of Audio, do nothing.
+            return args[0]
+        return super().__new__(cls)
+    
     def __init__(
         self,
+        source: str | T,
         **kwargs: Any
     ):
+        if isinstance(source, Audio):
+            return
+        self._source = source  # read only after instance created
+        if source.startswith("https://"):
+            self.is_remote = True
+        else:
+            self.is_remote = False
+            self._local_file_path = source
+
         for attr, value in kwargs.items():
             if value is None or value == "":
                 continue
             setattr(self, attr, value)
 
+    def __str__(self):
+        return f'{self.__class__.__name__}({", ".join(f"{k}={repr(v)}" for k, v in self.__dict__.items())})'
 
     @property
-    def source(self) -> Optional[str]:
-        return self._url if self._url else self._file_path
-    
-    @source.setter
-    def source(self, source: str):
-        if source.startswith("https://"):
-            self._url = source
-            self._file_path = None
-        else:
-            self._file_path = source
-            self._url = None
-        self._rawdata = None
+    def source(self):
+        return self._source
 
     @property
-    def file_path(self) -> str:
-        return self._file_path
-
-    @property
-    def url(self) -> str:
-        return self._url
+    def local_file_path(self) -> str:
+        return self._local_file_path
 
     @property
     def start_time(self) -> float:
@@ -97,32 +103,30 @@ class Audio:
             return self._rawdata[self.start_frame:self.end_frame]
 
     def _load_audio(self) -> np.ndarray:
-        """Load audio to self._rawdata based on self._url or self._file_path.
+        """Load audio to self._rawdata.
         Returns loaded audio data"""
-        if self._file_path is None and self._url is None:
-            raise ValueError("No audio source is set.")
-        if self._file_path is None or not os.path.exists(self._file_path):
-            logger.info(f"File path ({self._file_path}) is not set or file does not exist. Downloading audio.")
-            self._file_path = dl_audio(self._url, self.download_format, self.password) # type: ignore
-        logger.info(f"Loading audio file {self._file_path} ({os.path.getsize(self._file_path)/1000000:.02f}MB)")
+        if self.local_file_path is None and self.is_remote:
+            logger.info(f"Downloading from ({self.source}) ...")
+            self._local_file_path = dl_audio(self.source, self.download_format, self.password) # type: ignore
+        logger.info(f"Loading audio file {self.local_file_path} ({os.path.getsize(self.local_file_path)/1000000:.02f}MB)")
         # Check if the uploading is finished.
         # self.upload_wait_func is used to wait for the check.
         if self.verify_upload:
-            logger.info(f"Checking if uploading {self._file_path} is still uploading.")
-            uploading_flag, filesize1, filesize2, wait_time = is_uploading(self._file_path, self.upload_wait_func)
+            logger.info(f"Checking if uploading {self.local_file_path} is still uploading.")
+            uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.local_file_path, self.upload_wait_func)
             if uploading_flag:
                 logger.info(f"File size increase is detected in {wait_time:.02f} seconds.")
-                message = f"{self._file_path} seems still uploading. Waiting until upload finished."
+                message = f"{self.local_file_path} seems still uploading. Waiting until upload finished."
                 if 'IPython' in sys.modules:
                     display = sys.modules["IPython"].display
                     display.display(display.HTML(f'<div style="color: red; font-size:large; font-weight: bold;">⚠️ {message}</div>'))
                 uploading_flag = True
                 while uploading_flag:
-                    uploading_flag, filesize1, filesize2, wait_time = is_uploading(self._file_path, lambda x=10: time.sleep(x))
+                    uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.local_file_path, lambda x=10: time.sleep(x))
                     logger.info(f"Uploaded size: {filesize2 / 1000000}MB ({(filesize2 - filesize1) / (wait_time * 1000):.01f} kB/s)")
             else:
                 logger.info(f"No file size increase is detected in {wait_time:.02f} seconds.")
-        _rawdata = decode_audio(self._file_path, self.sampling_rate)
+        _rawdata = decode_audio(self.local_file_path, self.sampling_rate)
         if not isinstance(_rawdata, np.ndarray):
             raise ValueError("Failed to get audio data. Check if url or file path is correctly set.")
         self._rawdata = _rawdata
@@ -131,9 +135,9 @@ class Audio:
 
     @property
     def live_stream(self) -> subprocess.Popen:
-        if not self._url:
+        if not self.source:
             raise ValueError("No url set.")
-        command = ["yt-dlp", "-g", self._url, "-x", "-S", "+acodec:mp4a", "-q"]
+        command = ["yt-dlp", "-g", self.source, "-x", "-S", "+acodec:mp4a", "-q"]
         audio_url = subprocess.check_output(command).decode("utf-8").strip()
         return decode_audio_pipe(audio_url, 16000)
 
