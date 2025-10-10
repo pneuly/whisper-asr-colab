@@ -1,12 +1,13 @@
 import logging
 from torch.cuda import is_available as cuda_is_available
 from torch import device as torch_device, from_numpy
-from typing import List, Union, Optional, BinaryIO, Any
+from typing import Union, Optional, BinaryIO
 from numpy import ndarray
 import contextlib
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from whisper_asr_colab.common.speakersegment import SpeakerSegment
+from whisper_asr_colab.common.speakersegment import Segment, SpeakerSegment
+from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ def diarize(
         device: Optional[str] = "auto",
         show_progress: bool = True,
         hyperparams: Optional[dict] = None,
-     ) -> List[SpeakerSegment]:
+     ) -> SpeakerSegmentList:
 
     if device == "auto":
         device = "cuda" if cuda_is_available() else "cpu"
@@ -36,13 +37,17 @@ def diarize(
         audio_data = {'uri': 'audio_stream', 'audio': audio}
 
     hook = ProgressHook() if show_progress else None
-    speaker_segments = []
+    speaker_segments = SpeakerSegmentList()
     with hook or contextlib.nullcontext():
         for turn, speaker in pipeline(audio_data, hook=hook).exclusive_speaker_diarization:
             speaker_segments.append(
                 SpeakerSegment(
-                    start=turn.start,
-                    end=turn.end,
+                    segment=Segment(
+                        start=turn.start,
+                        end=turn.end,
+                        id=0, seek=0, text="", tokens=[], temperature=0.0, avg_logprob=0.0,
+                        compression_ratio=0.0, no_speech_prob=0.0, words=None,
+                    ),
                     speaker=speaker
                 )
             )

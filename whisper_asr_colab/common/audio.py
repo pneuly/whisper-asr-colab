@@ -1,5 +1,4 @@
 import sys
-import re
 import os
 import time
 import logging
@@ -7,7 +6,6 @@ import subprocess
 import numpy as np
 import ffmpeg
 from typing import Union, Optional, Tuple, Callable, Any, TypeVar
-from dataclasses import dataclass
 from yt_dlp import YoutubeDL
 from .utils import str2seconds
 

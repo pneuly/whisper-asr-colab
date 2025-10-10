@@ -1,12 +1,12 @@
 from collections import defaultdict
-from typing import DefaultDict, Optional, List, Union, BinaryIO
+from typing import DefaultDict, Optional, Union, BinaryIO
 from faster_whisper import WhisperModel as FasterWhisperModel
 try:
-    from ..common.speakersegment import SpeakerSegment, write_result, save_segments
+    from ..common.speakersegmentlist import SpeakerSegmentList
     from ..common.audio import Audio
     from .asr import faster_whisper_transcribe
 except ImportError:
-    from whisper_asr_colab.common.speakersegment import SpeakerSegment, write_result, save_segments
+    from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
     from whisper_asr_colab.common.audio import Audio
     from whisper_asr_colab.asr.asr import faster_whisper_transcribe
 
@@ -14,7 +14,7 @@ except ImportError:
 class ASRWorker:
     audio: Union[str, BinaryIO, 'numpy.ndarray']
     model: Optional[FasterWhisperModel] = None
-    asr_segments: Optional[List[SpeakerSegment]]
+    asr_segments: Optional[SpeakerSegmentList]
     transcribe_args: DefaultDict[str, int | int | bool]
     def __init__(
             self,
@@ -32,7 +32,7 @@ class ASRWorker:
         )
         self.transcribe_args = defaultdict(str, transcribe_args or {})
 
-    def run(self) -> List[SpeakerSegment]:
+    def run(self) -> dict[str, str]:
         """Wrapper for ASR"""
         # Isolate the ASR process from diarization process
         # because Pipeline of pyannote.audio crashes if faster whisper is called beforehand.
@@ -41,11 +41,10 @@ class ASRWorker:
             model=self.model,
             **self.transcribe_args
         )
-
         #outfilename = datetime.now().strftime("%Y%m%d_%H%M%S")
-        outfiles = write_result(self.asr_segments, self.audio.local_file_path)
+        outfiles = self.asr_segments.write_asr_result(self.audio.local_file_path) #add timestamp offset if needed
         del self.model
 
         print("Saving ASR result as json file.")
-        save_segments(self.asr_segments, "asr_result.json")
+        self.asr_segments.save("asr_result.json")
         return outfiles

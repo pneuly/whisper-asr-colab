@@ -3,11 +3,12 @@ import sys
 import datetime
 from logging import getLogger
 from subprocess import Popen
-from typing import Union, Optional, Iterable, TextIO, List, ParamSpec
+from typing import Union, Optional, Iterable, TextIO, ParamSpec
 import numpy as np
 from faster_whisper import WhisperModel as FasterWhisperModel
 import ipywidgets as widgets
 from whisper_asr_colab.common.speakersegment import SpeakerSegment
+from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
 
 logger = getLogger(__name__)
 
@@ -19,7 +20,7 @@ def realtime_transcribe(
         model: Optional[FasterWhisperModel] = None,
         language: Optional[str] = None,
         initial_prompt: _Type_Prompt = None,
-    ) -> List[SpeakerSegment]:
+    ) -> SpeakerSegmentList:
     ## TODO: Improve real-time transcription quality.
     ## The current code handles the audio every 30 seconds, which harms transcription quality.
     ## Possible improvements:
@@ -84,4 +85,4 @@ def realtime_transcribe(
         else:
             time.sleep(0.1)
     fh1.close()
-    return [SpeakerSegment.from_segment(segment) for segment in segments]
+    return [SpeakerSegment(segment=segment) for segment in segments]

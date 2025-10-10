@@ -13,18 +13,24 @@
 ## 使用例
 Google Colab 上での実装例は、[whisper_asr_colab.ipynb](whisper_asr_colab.ipynb) にあります。
 ```python
-from whisper_asr_colab.asr.worker import ASRWorker
 from whisper_asr_colab.common.audio import Audio
+from whisper_asr_colab.asr.asrworker import ASRWorker
+from whisper_asr_colab.diarize.diarizationworker import DiarizationWorker
+from whisper_asr_colab.docx_generator import DocxGenerator
 
-audio = "audiofile.m4a"
+audio = Audio("audiofile.m4a")
 model_size = "turbo"
 hf_token = "your hf token"
 
-worker = ASRWorker(
-    audio=Audio(audio),
+asrworker = ASRWorker(
+    audio=audio,
     model_size=model_size,
-    hugging_face_token=hf_token,
 )
+asrworker.run()
 
-worker.run()
+diarizationworker = DiarizationWorker(
+    audio=audio,
+    hugging_face_token = hf_token,
+)
+diarizationworker.run()
 ```
