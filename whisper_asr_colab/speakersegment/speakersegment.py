@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Union, Optional
 from faster_whisper.transcribe import Segment
-from .utils import str2seconds, format_timestamp
+from ..common.utils import str2seconds, format_timestamp
 from logging import getLogger
 
 logger = getLogger(__name__)

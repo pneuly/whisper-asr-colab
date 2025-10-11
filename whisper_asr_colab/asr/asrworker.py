@@ -2,12 +2,12 @@ from collections import defaultdict
 from typing import DefaultDict, Optional, Union, BinaryIO
 from faster_whisper import WhisperModel as FasterWhisperModel
 try:
-    from ..common.speakersegmentlist import SpeakerSegmentList
-    from ..common.audio import Audio
+    from ..speakersegment import SpeakerSegmentList
+    from ..audio import Audio
     from .asr import faster_whisper_transcribe
 except ImportError:
-    from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
-    from whisper_asr_colab.common.audio import Audio
+    from whisper_asr_colab.speakersegment import SpeakerSegmentList
+    from whisper_asr_colab.audio import Audio
     from whisper_asr_colab.asr.asr import faster_whisper_transcribe
 
 

@@ -6,8 +6,8 @@ from numpy import ndarray
 import contextlib
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from whisper_asr_colab.common.speakersegment import Segment, SpeakerSegment
-from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
+from whisper_asr_colab.speakersegment import Segment, SpeakerSegment, SpeakerSegmentList
+
 
 logger = logging.getLogger(__name__)
 

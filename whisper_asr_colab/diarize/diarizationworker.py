@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 from typing import Optional, List
 try:
-    from ..common.speakersegmentlist import SpeakerSegmentList
-    from ..common.audio import Audio
+    from ..speakersegment import SpeakerSegmentList
+    from ..audio import Audio
     from .diarize import diarize as diarize
 except ImportError:
-    from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
-    from whisper_asr_colab.common.audio import Audio
-    from whisper_asr_colab.diarize.diarize import diarize
+    from whisper_asr_colab.speakersegment import SpeakerSegmentList
+    from whisper_asr_colab.audio import Audio
+    from whisper_asr_colab.diarize import diarize
 
 @dataclass
 class DiarizationWorker:

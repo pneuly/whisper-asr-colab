@@ -1,5 +1,5 @@
 import os
-from whisper_asr_colab.common.audio import Audio
+from whisper_asr_colab.audio import Audio
 from whisper_asr_colab.diarize.diarize import DiarizationPipeline
 
 def test_diarize(audio: str):

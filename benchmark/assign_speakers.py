@@ -5,8 +5,8 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 from typing import Optional, List, Tuple
-from ..whisper_asr_colab.common.speakersegment import SpeakerSegment
-from ..whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
+from ..whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
+
 
 def original_assign_speakers(
         dia_segments: SpeakerSegmentList,

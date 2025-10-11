@@ -1,9 +1,9 @@
 from logging import getLogger, DEBUG
 from typing import Union, Optional, BinaryIO, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
-from whisper_asr_colab.common.speakersegment import SpeakerSegment
+from whisper_asr_colab.speakersegment import SpeakerSegment
 from whisper_asr_colab.common.utils import format_timestamp
-from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
+from whisper_asr_colab.speakersegment import SpeakerSegmentList
 
 logger = getLogger(__name__)
 

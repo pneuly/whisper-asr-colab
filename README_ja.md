@@ -13,7 +13,7 @@
 ## 使用例
 Google Colab 上での実装例は、[whisper_asr_colab.ipynb](whisper_asr_colab.ipynb) にあります。
 ```python
-from whisper_asr_colab.common.audio import Audio
+from whisper_asr_colab.audio import Audio
 from whisper_asr_colab.asr.asrworker import ASRWorker
 from whisper_asr_colab.diarize.diarizationworker import DiarizationWorker
 from whisper_asr_colab.docx_generator import DocxGenerator

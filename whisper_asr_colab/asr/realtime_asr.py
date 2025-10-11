@@ -7,8 +7,8 @@ from typing import Union, Optional, Iterable, TextIO, ParamSpec
 import numpy as np
 from faster_whisper import WhisperModel as FasterWhisperModel
 import ipywidgets as widgets
-from whisper_asr_colab.common.speakersegment import SpeakerSegment
-from whisper_asr_colab.common.speakersegmentlist import SpeakerSegmentList
+from whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
+
 
 logger = getLogger(__name__)
 
