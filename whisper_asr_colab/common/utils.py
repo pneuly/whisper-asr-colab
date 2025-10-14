@@ -47,15 +47,32 @@ def sanitize_filename(filename: str, replacement: str = "_") -> str:
     return re.sub(invalid_chars, replacement, filename)
 
 
-def unzip_with_password(filepath, password):
+def unzip_with_password(filepath: str, password: str = None):
     if not os.path.exists(filepath):
         print(f"Error: The file at '{filepath}' does not exist.")
         return []
     try:
-        with zipfile.ZipFile(filepath, 'r') as zf:
+        with zipfile.ZipFile(filepath, 'r', metadata_encoding='cp932') as zf:
             file_list = zf.namelist()
-            command = ['unzip', '-o', '-P', password, filepath]
-            result = subprocess.run(command, check=True, capture_output=True, text=True)
+            # Guess file name encoding
+            used_utf8 = False
+            used_cp932 = False
+            for info in zf.infolist():
+                if (info.flag_bits & 0x800):
+                    used_utf8 = True
+                    continue
+                if not info.filename.isascii():
+                    used_cp932 = True
+        command = ['unzip', '-o']
+        if password:
+            command += ['-P', password]
+        if used_cp932:
+            command += ['-O', "CP932"]
+        command += [filepath]
+        
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        return file_list
+
     except zipfile.BadZipFile:
         print(f"Error: '{filepath}' is not a valid ZIP file.")
     except Exception as e:

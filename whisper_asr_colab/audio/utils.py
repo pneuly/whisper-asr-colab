@@ -53,7 +53,7 @@ def dl_audio(url: str, format: Optional[str] = None, password: Optional[str] = N
         'noplaylist': True,
     }
     if password:
-        ydl_opts['video_password'] = password
+        ydl_opts['videopassword'] = password
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         outfilename = ydl.prepare_filename(info)

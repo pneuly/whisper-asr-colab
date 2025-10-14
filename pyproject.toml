@@ -22,10 +22,10 @@ allow-direct-references = true
 
 [tool.hatch.build]
 packages = ["whisper_asr_colab"]
-exclude = ["whisper_asr_colab/templete_xmls/"]
+exclude = ["whisper_asr_colab/docx_generator/templete_xmls/"]
 
 [tool.hatch.build.hooks.custom]
 path = "scripts/restore_docx.py"
 
 [tool.hatch.build.targets.wheel.force-include]
-"whisper_asr_colab/templates" = "whisper_asr_colab/templates"
+"whisper_asr_colab/docx_generator/templates" = "whisper_asr_colab/docx_generator/templates"

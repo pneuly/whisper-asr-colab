@@ -2,8 +2,9 @@ from logging import getLogger, DEBUG
 from typing import Union, Optional, BinaryIO, Any
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from whisper_asr_colab.speakersegment import SpeakerSegment
-from whisper_asr_colab.common.utils import format_timestamp
 from whisper_asr_colab.speakersegment import SpeakerSegmentList
+
+ASR_PROGRESS_FILE = "asr_progress.txt"
 
 logger = getLogger(__name__)
 
@@ -37,7 +38,7 @@ def faster_whisper_transcribe(
             **transcribe_args,
         )
     segments = SpeakerSegmentList()
-    with open("diarization_progress.txt", "w", encoding="utf-8", buffering=1) as f:
+    with open(ASR_PROGRESS_FILE, "w", encoding="utf-8", buffering=1) as f:
         for segment in segments_generator:
             speaker_seg = SpeakerSegment(segment=segment)
             segment_text = speaker_seg.to_str(with_speaker=False)

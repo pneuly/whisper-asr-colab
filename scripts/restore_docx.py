@@ -17,7 +17,7 @@ def restore_docx(xml_dir, output_docx):
                 docx.write(full_path, arcname)
 
 def main():
-    base_dir = Path("whisper_asr_colab")
+    base_dir = Path("whisper_asr_colab/docx_generator")
     xml_dir = Path(base_dir, "templete_xmls/diarized_transcription")
     output_dir = Path(base_dir, "templates")
     output_docx = Path(output_dir, "diarized_transcription.docx")
