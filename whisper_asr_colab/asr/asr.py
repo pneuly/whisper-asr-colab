@@ -1,8 +1,10 @@
 from logging import getLogger, DEBUG
-from typing import Union, Optional, BinaryIO, Any
+from typing import Union, Optional, BinaryIO, Any, TYPE_CHECKING
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from whisper_asr_colab.speakersegment import SpeakerSegment
 from whisper_asr_colab.speakersegment import SpeakerSegmentList
+if TYPE_CHECKING:
+    import numpy
 
 ASR_PROGRESS_FILE = "asr_progress.txt"
 

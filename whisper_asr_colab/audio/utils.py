@@ -5,9 +5,9 @@ import logging
 import subprocess
 import numpy as np
 import ffmpeg
-from typing import Union, Optional, Tuple, Callable, Any, TypeVar
+from typing import Optional, Tuple, Callable
 from yt_dlp import YoutubeDL
-from ..common.utils import str2seconds
+
 
 logger = logging.getLogger(__name__)
 

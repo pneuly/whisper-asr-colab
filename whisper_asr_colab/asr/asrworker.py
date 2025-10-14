@@ -1,6 +1,8 @@
 from collections import defaultdict
-from typing import DefaultDict, Optional, Union, BinaryIO
+from typing import DefaultDict, Optional, Union, BinaryIO, TYPE_CHECKING
 from faster_whisper import WhisperModel as FasterWhisperModel
+if TYPE_CHECKING:
+    import numpy
 try:
     from ..speakersegment import SpeakerSegmentList
     from ..audio import Audio

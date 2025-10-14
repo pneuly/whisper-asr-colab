@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional
 try:
     from ..speakersegment import SpeakerSegmentList
     from ..audio import Audio

@@ -14,7 +14,7 @@ def _tail_progress_file(
     while not os.path.exists(file_path):
         print("Waiting for ASR to begin.")
         if stop_event.wait(timeout=5):
-            return
+            break
 
     try:
         with open(file_path, "r", encoding='utf-8') as f:
@@ -26,6 +26,7 @@ def _tail_progress_file(
                         print(stripped_line, flush=True)
                 else:  # file not updated, wait a bit
                     time.sleep(0.5)
+            print(f.readline().strip(), flush=True) # print last line if any
     except FileNotFoundError:
         print(f"Error: File '{file_path}' not found or was deleted during tailing.")
 
