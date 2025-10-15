@@ -10,20 +10,20 @@ def perform_asr(audio:str, batch_size:int):
         transcribe_args={"batch_size" : batch_size,}
     )
     
-    segments, info = worker.run()
-    for segment in segments:
-        print(segment.text)
-    assert info.all_language_probs is not None
-    assert info.language == "ja"
-    assert info.language_probability > 0.9
+    worker.run()
+    segments = worker.asr_segments
+    for seg in segments:
+        print(seg.segment.text)
     assert len(segments) > 1
-    assert segments[0].text != ""
-    return (segments, info,)
+    assert segments[0].segment.text != ""
+    return (segments,)
 
 def test_asr_squential(audio):
     perform_asr(audio, 1)
 
 def test_asr_batched(audio):
     perform_asr(audio, 4)
+
+
 
 

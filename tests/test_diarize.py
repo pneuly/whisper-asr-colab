@@ -8,4 +8,4 @@ def test_diarize(audio: str):
         raise ValueError("Hugging face token required. Set the token to env var 'HF_TOKEN'")
     worker = DiarizationWorker(audio=Audio(audio), hugging_face_token=hf_token)
     worker.run()
-    assert len(diarized_segments) > 1
+    assert len(worker.diarized_segments) > 1
