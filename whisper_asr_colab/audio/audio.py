@@ -10,9 +10,6 @@ from ..common.utils import str2seconds
 
 logger = logging.getLogger(__name__)
 
-def default_upload_wait(x: int = 10) -> None:
-    time.sleep(x)
-
 T = TypeVar('T', bound='Audio')
 class Audio:
     """Audio class to handle audio input from local file or internet url."""
@@ -23,7 +20,6 @@ class Audio:
     start_frame: Optional[int] = None
     end_frame: Optional[int] = None
     verify_upload: bool = True
-    upload_wait_func: Callable = default_upload_wait
     is_remote: Optional[bool] = None
     _local_file_path: Optional[str] = None
     _rawdata: Optional[np.ndarray] = None
@@ -107,10 +103,9 @@ class Audio:
             self._local_file_path = dl_audio(self.source, self.download_format, self.password) # type: ignore
         logger.info(f"Loading audio file {self.local_file_path} ({os.path.getsize(self.local_file_path)/1000000:.02f}MB)")
         # Check if the uploading is finished.
-        # self.upload_wait_func is used to wait for the check.
         if self.verify_upload:
             logger.info(f"Checking if uploading {self.local_file_path} is still uploading.")
-            uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.local_file_path, self.upload_wait_func)
+            uploading_flag, filesize1, filesize2, wait_time = is_uploading(self.local_file_path)
             if uploading_flag:
                 logger.info(f"File size increase is detected in {wait_time:.02f} seconds.")
                 message = f"{self.local_file_path} seems still uploading. Waiting until upload finished."
