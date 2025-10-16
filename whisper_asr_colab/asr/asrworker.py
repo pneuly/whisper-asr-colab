@@ -17,7 +17,7 @@ class ASRWorker:
     audio: Union[str, BinaryIO, 'numpy.ndarray']
     model: Optional[FasterWhisperModel] = None
     asr_segments: Optional[SpeakerSegmentList]
-    transcribe_args: DefaultDict[str, int | int | bool]
+    transcribe_args: DefaultDict[str, str | int | bool]
     def __init__(
             self,
             audio: Audio,

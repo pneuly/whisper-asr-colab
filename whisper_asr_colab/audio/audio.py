@@ -4,7 +4,7 @@ import time
 import logging
 import subprocess
 import numpy as np
-from typing import Union, Optional, Tuple, Callable, Any, TypeVar
+from typing import Union, Optional, Tuple, Any, TypeVar
 from .utils import decode_audio, decode_audio_pipe, dl_audio, is_uploading
 from ..common.utils import str2seconds
 
@@ -142,7 +142,7 @@ class Audio:
         if not isinstance(self.ndarray, np.ndarray):
             raise ValueError("Cannot get self.ndarray as ndarray. Set url or file path to Audio instance.")
         audio_data = np.abs(self.ndarray)
-        non_silent_indices = np.where(audio_data > threshold)[0]
+        non_silent_indices = np.nonzero(audio_data > threshold)[0]
         if len(non_silent_indices) == 0:
             logger.warning("Entire audio signal is silent!")
             return None, None

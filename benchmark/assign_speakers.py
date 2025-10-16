@@ -4,7 +4,7 @@ import random
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from typing import Optional, List, Tuple
+from typing import Optional, Tuple
 from ..whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
 
 
@@ -27,7 +27,7 @@ def original_assign_speakers(
 
     diarized_segs = copy.deepcopy(asr_segments)
     for seg in diarized_segs:
-        speaker, isec = _get_speaker(seg.start, seg.end)
+        speaker, _ = _get_speaker(seg.start, seg.end)
         seg.speaker = speaker
     return diarized_segs
 
@@ -36,8 +36,6 @@ def optimized_assign_speakers(
         asr_segments: SpeakerSegmentList,
     ) -> SpeakerSegmentList:
 
-    #diarize_start, diarize_end, diarize_speakers = np.array(
-    #    [(item[0].start, item[0].end, item[1]) for item in dia_segments], dtype=object).T
     diarize_start = np.array([item.start for item in dia_segments])
     diarize_end = np.array([item.end for item in dia_segments])
     diarize_speakers = np.array([item.speaker for item in dia_segments])
@@ -95,7 +93,6 @@ def optimized_assign_speakers2(
             # Select the speaker with the largest total overlap
             max_index = np.argmax(summed_intersections)
             speaker = unique_speakers[max_index]
-            #speaker = max(speaker_overlap, key=speaker_overlap.get)
         else:
             speaker = None
         return speaker
@@ -168,7 +165,7 @@ def optimized_assign_speakers4(
         nonlocal max_idx
         intersection = np.minimum(diarize_end, end) - np.maximum(diarize_start, start)
         valid_intersection = intersection > 0
-        max_idx = np.where(valid_intersection)[0].max()
+        max_idx = np.nonzero(valid_intersection)[0].max()
         print(valid_intersection)
         if valid_intersection.any():
             # Filter to only valid intersections
@@ -202,8 +199,8 @@ def segment_generator(size, min_duration=0.5, max_duration=10.0, has_speaker=Fal
     segments = []
     start_time = 0
     speaker = 1
-    for i in range(num_diarized_segments):
-        duration = random.uniform(0.5, 10.0)
+    for _ in range(size):
+        duration = random.uniform(min_duration, max_duration)
         segment = SpeakerSegment(start=start_time, end=start_time + duration)
         start_time += duration
         if has_speaker:
@@ -242,15 +239,4 @@ for funcname, duration, result in resultlist:
     print(f"{funcname}: {duration}")
     print(resultlist[0][2] == result)
 
-#print(f"original  : {original_duration}")
-#print(f"optimized : {optimized_duration}")
-#print(f"optimized2: {optimized_duration2}")
-#print(f"optimized3: {optimized_duration3}")
-#print(original_result == optimized_result)
-#print(original_result == optimized_result2)
-#print(original_result == optimized_result3)
-#print(original_result)
-#for i, (a, b) in enumerate(zip(original_result, optimized_result3)):
-#    if a != b:
-#        print(f"Index {i}:\n{a}!=\n{b}\n")
 
