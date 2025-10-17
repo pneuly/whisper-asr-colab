@@ -1,0 +1,16 @@
+aversion = 1
+
+test_patterns = [
+  "tests/**",
+]
+
+[[analyzers]]
+name = "python"
+enabled = true
+dependency_file_paths = [
+  "requirements.txt",
+]
+
+[[transformers]]
+name = "ruff"
+enabled = true
