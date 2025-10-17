@@ -100,7 +100,7 @@ class Audio:
         Returns loaded audio data"""
         if self.local_file_path is None and self.is_remote:
             logger.info(f"Downloading from ({self.source}) ...")
-            self._local_file_path = dl_audio(self.source, self.download_format, self.password) # type: ignore
+            self._local_file_path = dl_audio(self.source, password=self.password) # type: ignore
         logger.info(f"Loading audio file {self.local_file_path} ({os.path.getsize(self.local_file_path)/1000000:.02f}MB)")
         # Check if the uploading is finished.
         if self.verify_upload:

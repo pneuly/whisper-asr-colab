@@ -56,7 +56,7 @@ def diarize(
         for turn, speaker in (
             pipeline(audio_data, hook=hook).exclusive_speaker_diarization
             if USE_PYANNOTE4
-            else pipeline(audio_data, hook=hook).itertracks(yield_label=True)
+            else [t[0::2] for t in pipeline(audio_data, hook=hook).itertracks(yield_label=True)]
         ):
             speaker_segments.append(
                 SpeakerSegment(
