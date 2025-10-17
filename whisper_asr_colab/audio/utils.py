@@ -7,7 +7,7 @@ import numpy as np
 import ffmpeg
 from typing import Optional, Tuple, Callable
 from yt_dlp import YoutubeDL
-from yt_dlp.utils import ExtractorError, DownloadError
+from yt_dlp.utils import DownloadError
 
 logger = logging.getLogger(__name__)
 
