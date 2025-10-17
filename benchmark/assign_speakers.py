@@ -5,7 +5,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 from typing import Optional, Tuple
-from ..whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
+from ..whisper_asr_colab.speakersegment import Segment, SpeakerSegment, SpeakerSegmentList
 
 
 def original_assign_speakers(
@@ -119,9 +119,9 @@ def optimized_assign_speakers3(
         asr_segments: SpeakerSegmentList,
     ) -> SpeakerSegmentList:
 
-    starts = [item.start for item in dia_segments]
-    ends = [item.end for item in dia_segments]
-    speakers = [item for item in dia_segments]
+    starts = [item.sgement.start for item in dia_segments]
+    ends = [item.segment.end for item in dia_segments]
+    speakers = [item.speaker for item in dia_segments]
     dia_segments_size = len(dia_segments) - 1
 
     def _get_speaker(start: float, end: float) :
@@ -144,11 +144,14 @@ def optimized_assign_speakers3(
             durations[speakers[i]] += min(end, ends[i]) - max(start, starts[i])
             i += 1
 
-
-    diarized_segs = [
-        SpeakerSegment(start=seg.start, end=seg.end, speaker=next(_get_speaker(seg.start, seg.end)))
-        for seg in asr_segments
-    ]
+    diarized_segs = []
+    for seg in asr_segments:
+        diarized_segs.append(
+            SpeakerSegment(
+                Segment(start=seg.start, end=seg.end),
+                speaker=next(_get_speaker(seg.start, seg.end))
+            )
+        )
     return diarized_segs
 
 def optimized_assign_speakers4(
@@ -156,9 +159,9 @@ def optimized_assign_speakers4(
         asr_segments: SpeakerSegmentList,
     ) -> SpeakerSegmentList:
 
-    diarize_start = np.array([item.start for item in dia_segments])
-    diarize_end = np.array([item.end for item in dia_segments])
-    diarize_speakers = np.array([item for item in dia_segments])
+    diarize_start = np.array([item.segment.start for item in dia_segments])
+    diarize_end = np.array([item.segment.end for item in dia_segments])
+    diarize_speakers = np.array([item.speaker for item in dia_segments])
     max_idx = 0
 
     def _get_speaker(start: float, end: float) -> Optional[str]:
@@ -211,19 +214,19 @@ def segment_generator(size, min_duration=0.5, max_duration=10.0, has_speaker=Fal
     return segments
 
 
-dia_segments = segment_generator(num_diarized_segments, 0.5, 10.0, True)
-asr_segments = segment_generator(num_diarized_segments, 0.5, 5.0, False)
+DIA_SEGMENTS = segment_generator(num_diarized_segments, 0.5, 10.0, True)
+ASR_SEGMENTS = segment_generator(num_diarized_segments, 0.5, 5.0, False)
 
 # Benchmark original function
 start_time = time.time()
-original_result = original_assign_speakers(dia_segments, asr_segments)
+original_result = original_assign_speakers(DIA_SEGMENTS , ASR_SEGMENTS)
 original_duration = time.time() - start_time
 
 
 # Benchmark optimized functions
 def bench(funcname: str):
     start_time = time.time()
-    result = globals()[funcname](dia_segments, asr_segments)
+    result = globals()[funcname](DIA_SEGMENTS , ASR_SEGMENTS)
     duration = time.time() - start_time
     return duration, result
 
