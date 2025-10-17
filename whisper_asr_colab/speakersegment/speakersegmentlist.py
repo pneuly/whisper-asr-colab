@@ -111,7 +111,7 @@ class SpeakerSegmentList(List[SpeakerSegment]):
         self,
         basename: str,
         timestamp_offset: Optional[Union[int, float, str]] = 0.0,
-    ) -> dict[str, str]:
+    ) -> str:
         outfilename = f"{basename}_integrated.txt"
         with open(outfilename, "w", encoding="utf-8") as fh:
             for speaker_seg in self:
