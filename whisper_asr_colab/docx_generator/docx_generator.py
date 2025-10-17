@@ -1,13 +1,12 @@
-#import logging
-# This module must be moved to common
+from typing import Optional
 from pathlib import Path
 from docx import Document
 
 class DocxGenerator():
-    def __init__(self, doc = None):
+    def __init__(self, doc:Optional[Document] = None):
         # Create a new Word document
         template_path = Path(__file__).parent / 'templates' / 'diarized_transcription.docx'
-        self.doc = doc if doc else Document(str(template_path))
+        self.doc = doc or Document(str(template_path))
         self.txtfilename = ""
         self.docfilename = ""
         self.styles = {

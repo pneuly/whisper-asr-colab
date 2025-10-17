@@ -3,7 +3,7 @@ from typing import Optional
 try:
     from ..speakersegment import SpeakerSegmentList
     from ..audio import Audio
-    from .diarize import diarize as diarize
+    from .diarize import diarize
 except ImportError:
     from whisper_asr_colab.speakersegment import SpeakerSegmentList
     from whisper_asr_colab.audio import Audio
@@ -50,4 +50,3 @@ class DiarizationWorker:
         self._integrated_segments = self.asr_segments.assign_speakers(
                     diarization_result=self.diarized_segments,
                 ).combine_same_speakers()
-        return

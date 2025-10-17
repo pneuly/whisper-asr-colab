@@ -43,11 +43,11 @@ def decode_audio_pipe(audio: str, sampling_rate: int = 16000):
     )
 
 
-def dl_audio(url: str, format: Optional[str] = None, password: Optional[str] = None):
+def dl_audio(url: str, audio_format: Optional[str] = None, password: Optional[str] = None):
     """Download file from Internet"""
     logger.info(f"Downloading audio from {url}")
     ydl_opts = {
-        'format': '140/bestaudio/best',
+        'format': audio_format or '140/bestaudio/best',
         'outtmpl': '%(title)s.%(ext)s',
         'quiet': False,
         'noplaylist': True,
