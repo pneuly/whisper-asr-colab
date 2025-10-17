@@ -7,7 +7,7 @@ import numpy as np
 import ffmpeg
 from typing import Optional, Tuple, Callable
 from yt_dlp import YoutubeDL
-
+from yt_dlp.utils import ExtractorError, DownloadError
 
 logger = logging.getLogger(__name__)
 
@@ -47,17 +47,23 @@ def dl_audio(url: str, audio_format: Optional[str] = None, password: Optional[st
     """Download file from Internet"""
     logger.info(f"Downloading audio from {url}")
     ydl_opts = {
-        'format': audio_format or '140/bestaudio/best',
+        'format': '140/bestaudio/best',
         'outtmpl': '%(title)s.%(ext)s',
         'quiet': False,
         'noplaylist': True,
     }
+    if audio_format:
+        ydl_opts['format'] = audio_format
     if password:
         ydl_opts['videopassword'] = password
     with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        outfilename = ydl.prepare_filename(info)
-        return outfilename
+        try:
+            info = ydl.extract_info(url, download=True)
+            outfilename = ydl.prepare_filename(info)
+            return outfilename
+        except DownloadError as e:
+            print(f"yt-dlp options used: {ydl_opts}")
+            raise e
 
 def is_uploading(
         file: str,
