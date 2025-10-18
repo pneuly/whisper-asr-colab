@@ -13,9 +13,9 @@ def perform_asr(audio:str, batch_size:int):
     worker.run()
     segments = worker.asr_segments
     for seg in segments:
-        print(seg.segment.text)
+        print(seg.text)
     assert len(segments) > 1
-    assert segments[0].segment.text != ""
+    assert segments[0].text != ""
     return (segments,)
 
 def test_asr_squential(audio):

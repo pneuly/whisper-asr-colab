@@ -8,7 +8,7 @@ from importlib.metadata import version
 import contextlib
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from whisper_asr_colab.speakersegment import Segment, SpeakerSegment, SpeakerSegmentList
+from whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
 
 USE_PYANNOTE4 = parse(version("pyannote.audio")) >= parse("4.0.0")
 PYANNOTE_MODEL = (
@@ -60,12 +60,10 @@ def diarize(
         ):
             speaker_segments.append(
                 SpeakerSegment(
-                    segment=Segment(
-                        start=turn.start,
-                        end=turn.end,
-                        id=0, seek=0, text="", tokens=[], temperature=0.0, avg_logprob=0.0,
-                        compression_ratio=0.0, no_speech_prob=0.0, words=None,
-                    ),
+                    start=turn.start,
+                    end=turn.end,
+                    id=0, seek=0, text="", tokens=[], temperature=0.0, avg_logprob=0.0,
+                    compression_ratio=0.0, no_speech_prob=0.0, words=None,
                     speaker=speaker
                 )
             )
