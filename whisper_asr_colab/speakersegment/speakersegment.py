@@ -1,9 +1,26 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Union, Optional
-from faster_whisper.transcribe import Segment
 from ..common.utils import str2seconds, format_timestamp
 from logging import getLogger
+
+# Define Segment class to remove dependency to faster_whisper
+# Tentative solution. Should be merged to SpeakerSegment class
+@dataclass
+class Segment:
+    id: int | None
+    seek: int | None
+    start: float | None
+    end: float | None
+    text: str | None
+    tokens: list[int] | None
+    avg_logprob: float | None
+    compression_ratio: float | None
+    no_speech_prob: float | None
+    words: list | None
+    temperature: float | None
+    speaker: str | None
+
 
 logger = getLogger(__name__)
 @dataclass
