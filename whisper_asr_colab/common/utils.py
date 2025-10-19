@@ -1,24 +1,22 @@
-import sys
-import re
 import os
-import zipfile
+import re
 import subprocess
+import sys
+import zipfile
 from logging import getLogger
-from typing import Union, Optional, Iterable,Tuple
-
+from typing import Iterable, Optional, Tuple, Union
 
 logger = getLogger(__name__)
 
 _Type_Prompt = Optional[Union[str, Iterable[int]]]
 
+
 def str2seconds(time_str: str) -> float:
     """Convert a time string (hh:mm:ss) to seconds."""
     if not time_str:
         return 0.0
-    parts = time_str.split(':')
-    return sum(
-        float(x) * 60 ** i for i, x
-        in enumerate(parts[::-1]))
+    parts = time_str.split(":")
+    return sum(float(x) * 60**i for i, x in enumerate(parts[::-1]))
 
 
 def seconds_to_tuple(seconds: float) -> Tuple[int, int, float]:
@@ -31,13 +29,13 @@ def seconds_to_tuple(seconds: float) -> Tuple[int, int, float]:
 
 def format_timestamp(seconds: float, sec_format: str = "05.2f") -> str:
     """Format seconds into a string 'H:MM:SS.ss'."""
-    _h, _m ,_s = seconds_to_tuple(seconds)
+    _h, _m, _s = seconds_to_tuple(seconds)
     return f"{_h:01}:{_m:02}:{_s:{sec_format}}"
 
 
 def download_from_colab(filepath: str):
     """Download a file in Google Colab environment."""
-    #if str(get_ipython()).startswith("<google.colab."):
+    # if str(get_ipython()).startswith("<google.colab."):
     if "google.colab" in sys.modules:
         sys.modules["google.colab"].files.download(filepath)
 
@@ -52,24 +50,24 @@ def unzip_with_password(filepath: str, password: str = None):
         print(f"Error: The file at '{filepath}' does not exist.")
         return []
     try:
-        with zipfile.ZipFile(filepath, 'r', metadata_encoding='cp932') as zf:
+        with zipfile.ZipFile(filepath, "r", metadata_encoding="cp932") as zf:
             file_list = zf.namelist()
             # Guess file name encoding
             used_utf8 = False
             used_cp932 = False
             for info in zf.infolist():
-                if (info.flag_bits & 0x800):
+                if info.flag_bits & 0x800:
                     used_utf8 = True
                     continue
                 if not info.filename.isascii():
                     used_cp932 = True
-        command = ['unzip', '-o']
+        command = ["unzip", "-o"]
         if password:
-            command += ['-P', password]
+            command += ["-P", password]
         if used_cp932:
-            command += ['-O', "CP932"]
+            command += ["-O", "CP932"]
         command += [filepath]
-        
+
         subprocess.run(command, check=True, capture_output=True, text=True)
         return file_list
 
