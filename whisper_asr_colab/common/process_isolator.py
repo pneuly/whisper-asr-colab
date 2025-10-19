@@ -33,7 +33,7 @@ def _tail_progress_file(
 
 def process_isolator(
         func: Callable,
-        progress_file: Optional[str] = None,
+        progress_file: str | None,
         *args: Any,
         **kwargs: Any
         ) -> Any:

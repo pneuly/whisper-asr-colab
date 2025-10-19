@@ -1,35 +1,31 @@
 from __future__ import annotations
+from dataclasses import asdict
 from json import dump as jsondump, load as jsonload
 from itertools import groupby
 from collections import defaultdict
 from typing import Union, Optional, DefaultDict, List
-from faster_whisper.transcribe import Segment
 from logging import getLogger
 from .speakersegment import SpeakerSegment
 
 logger = getLogger(__name__)
 
 class SpeakerSegmentList(List[SpeakerSegment]):
-
     def combine(self) -> SpeakerSegment:
         """Combine list of SpeakerSegment into a single SpeakerSegment"""
         head_seg = self[0]
         last_seg = self[-1]
-        combined_underlying_seg = Segment(
-            id=head_seg.segment.id,
-            seek=head_seg.segment.seek,
-            start=head_seg.segment.start,
-            end=last_seg.segment.end,
-            text="\n".join(s.segment.text for s in self).strip(),
-            tokens=[],
-            temperature=head_seg.segment.temperature,
-            avg_logprob=head_seg.segment.avg_logprob,
-            compression_ratio=head_seg.segment.compression_ratio,
-            no_speech_prob=head_seg.segment.no_speech_prob,
-            words=None,
-        )
         return SpeakerSegment(
-            segment=combined_underlying_seg,
+            id=head_seg.id,
+            seek=head_seg.seek,
+            start=head_seg.start,
+            end=last_seg.end,
+            text="\n".join(s.text for s in self).strip(),
+            tokens=[],
+            temperature=head_seg.temperature,
+            avg_logprob=head_seg.avg_logprob,
+            compression_ratio=head_seg.compression_ratio,
+            no_speech_prob=head_seg.no_speech_prob,
+            words=None,
             speaker=head_seg.speaker,
         )
 
@@ -62,10 +58,12 @@ class SpeakerSegmentList(List[SpeakerSegment]):
         for asr_seg in self:
             while i <= dia_segments_size:
                 dia_seg = diarization_result[i]
-                if asr_seg.segment.end < dia_seg.segment.start:
+                logger.debug("[assign_speakers] asr_seg: %s, dia_seg: %s", asr_seg, dia_seg)
+
+                if asr_seg.end < dia_seg.start:
                     break
-                start = max(asr_seg.segment.start, dia_seg.segment.start)
-                end = min(asr_seg.segment.end, dia_seg.segment.end)
+                start = max(asr_seg.start, dia_seg.start)
+                end = min(asr_seg.end, dia_seg.end)
                 duration = end - start
                 if dia_seg.speaker and duration > 0.0:
                     durations[dia_seg.speaker] += duration
@@ -82,13 +80,13 @@ class SpeakerSegmentList(List[SpeakerSegment]):
 
     def save(self, jsonfile: str):
         with open(jsonfile, "w", encoding="utf-8") as fh:
-            jsondump([seg.to_dict() for seg in self], fh, ensure_ascii=False, indent=2)
+            jsondump([asdict(seg) for seg in self], fh, ensure_ascii=False, indent=2)
 
     @classmethod
     def load(cls, jsonfile: str) -> SpeakerSegmentList:
         with open(jsonfile, "r", encoding="utf-8") as fh:
             data_list = jsonload(fh)
-        return cls(SpeakerSegment.from_dict(d) for d in data_list)
+        return cls(SpeakerSegment(**d) for d in data_list)
 
 
     def write_asr_result(
@@ -111,7 +109,7 @@ class SpeakerSegmentList(List[SpeakerSegment]):
         self,
         basename: str,
         timestamp_offset: Optional[Union[int, float, str]] = 0.0,
-    ) -> dict[str, str]:
+    ) -> str:
         outfilename = f"{basename}_integrated.txt"
         with open(outfilename, "w", encoding="utf-8") as fh:
             for speaker_seg in self:

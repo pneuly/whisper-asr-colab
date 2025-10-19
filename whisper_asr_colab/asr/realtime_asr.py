@@ -1,6 +1,7 @@
 import time
 import sys
 import datetime
+from dataclasses import asdict
 from logging import getLogger
 from subprocess import Popen
 from typing import Union, Optional, Iterable, TextIO, ParamSpec
@@ -85,4 +86,4 @@ def realtime_transcribe(
         else:
             time.sleep(0.1)
     fh1.close()
-    return [SpeakerSegment(segment=segment) for segment in segments]
+    return [SpeakerSegment(**asdict(segment)) for segment in segments]
