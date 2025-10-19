@@ -4,6 +4,7 @@ from dataclasses import asdict
 from faster_whisper import BatchedInferencePipeline, WhisperModel as FasterWhisperModel
 from whisper_asr_colab.speakersegment import SpeakerSegment
 from whisper_asr_colab.speakersegment import SpeakerSegmentList
+
 if TYPE_CHECKING:
     import numpy
 
@@ -11,29 +12,31 @@ ASR_PROGRESS_FILE = "asr_progress.txt"
 
 logger = getLogger(__name__)
 
+
 def faster_whisper_transcribe(
-        audio: Union[str, BinaryIO, "numpy.ndarray"],
-        model: Optional[FasterWhisperModel] = None,
-        **transcribe_args: Any
-    ) -> tuple[SpeakerSegmentList, Any]:
-    
+    audio: Union[str, BinaryIO, "numpy.ndarray"],
+    model: Optional[FasterWhisperModel] = None,
+    **transcribe_args: Any,
+) -> tuple[SpeakerSegmentList, Any]:
     batch_size = transcribe_args.pop("batch_size", 1)
     logger.debug(f"batch_size: {batch_size}")
 
     model = model or FasterWhisperModel(
-                        "large-v3-turbo",
-                        device="auto",
-                        compute_type="default",
-                        )
+        "large-v3-turbo",
+        device="auto",
+        compute_type="default",
+    )
 
-    if batch_size > 1: # batch mode
+    if batch_size > 1:  # batch mode
         batched_model = BatchedInferencePipeline(model=model)
         segments_generator, info = batched_model.transcribe(
             audio=audio,
             **transcribe_args,
         )
-    else: # sequential mode
-        logger.info(f"batch_size is set to less than 2 (batch_size={batch_size}). Using sequential mode.")
+    else:  # sequential mode
+        logger.info(
+            f"batch_size is set to less than 2 (batch_size={batch_size}). Using sequential mode."
+        )
         transcribe_args["condition_on_previous_text"] = False
         transcribe_args["without_timestamps"] = False
         segments_generator, info = model.transcribe(
@@ -45,7 +48,7 @@ def faster_whisper_transcribe(
         for segment in segments_generator:
             speaker_seg = SpeakerSegment(**asdict(segment))
             segment_text = speaker_seg.to_str(with_speaker=False)
-            #print(segment_text)
+            # print(segment_text)
             f.write(segment_text + "\n")
             segments.append(speaker_seg)
     if logger.isEnabledFor(DEBUG):

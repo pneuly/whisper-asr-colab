@@ -5,15 +5,17 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
+
 @dataclass(kw_only=True)
-class SpeakerSegment():
+class SpeakerSegment:
     """A segment of speech with an assigned speaker.
     Not inherited from faster_whisper Segment to avoid dependency.
     """
+
     start: float
     end: float
     id: int | None = None
-    seek: int | None = None 
+    seek: int | None = None
     text: str | None = None
     tokens: list[int] | None = None
     avg_logprob: float | None = None
@@ -25,13 +27,11 @@ class SpeakerSegment():
 
     @property
     def duration(self):
-        return(self.end - self.start)
-
+        return self.end - self.start
 
     def shift_time(self, offset: int | float):
         self.start += offset
         self.end += offset
-
 
     def to_str(
         self,
@@ -39,8 +39,12 @@ class SpeakerSegment():
         with_timestamp: bool = True,
         with_speaker: bool = True,
         with_text: bool = True,
-        ) -> str:
-        _offset_seconds = str2seconds(timestamp_offset) if isinstance(timestamp_offset, str) else timestamp_offset
+    ) -> str:
+        _offset_seconds = (
+            str2seconds(timestamp_offset)
+            if isinstance(timestamp_offset, str)
+            else timestamp_offset
+        )
         start = self.start + _offset_seconds
         end = self.end + _offset_seconds
         txt = ""
