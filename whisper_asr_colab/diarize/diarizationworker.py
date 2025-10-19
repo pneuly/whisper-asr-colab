@@ -1,13 +1,15 @@
 from dataclasses import dataclass
 from typing import Optional
+
 try:
-    from ..speakersegment import SpeakerSegmentList
     from ..audio import Audio
+    from ..speakersegment import SpeakerSegmentList
     from .diarize import diarize
 except ImportError:
-    from whisper_asr_colab.speakersegment import SpeakerSegmentList
     from whisper_asr_colab.audio import Audio
     from whisper_asr_colab.diarize import diarize
+    from whisper_asr_colab.speakersegment import SpeakerSegmentList
+
 
 @dataclass
 class DiarizationWorker:
@@ -31,22 +33,23 @@ class DiarizationWorker:
                 item.shift_time(self.audio.start_time)
 
         self.diarized_segments = segments
-        
+
         print("Writing diarization result.")
         return self.integrated_segments.write_integrated_result(
-            self.audio.local_file_path) #add timestamp_offset if needed
+            self.audio.local_file_path
+        )  # add timestamp_offset if needed
 
     @property
     def integrated_segments(self):
         if not self._integrated_segments:
             self._integrate_with_asr()
         return self._integrated_segments
-    
+
     def _integrate_with_asr(self, asr_json: Optional[str] = "asr_result.json"):
         if not self.asr_segments:
             self.asr_segments = SpeakerSegmentList.load(asr_json)
         if not self.diarized_segments:
             raise ValueError("self.diarized_segments is empty.")
         self._integrated_segments = self.asr_segments.assign_speakers(
-                    diarization_result=self.diarized_segments,
-                ).combine_same_speakers()
+            diarization_result=self.diarized_segments,
+        ).combine_same_speakers()
