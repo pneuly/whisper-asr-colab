@@ -1,16 +1,10 @@
-aversion = 1
-
-test_patterns = [
-  "tests/**",
-]
+version = 1
 
 [[analyzers]]
 name = "python"
-enabled = true
-dependency_file_paths = [
-  "requirements.txt",
-]
+
+  [analyzers.meta]
+  runtime_version = "3.x.x"
 
 [[transformers]]
 name = "ruff"
-enabled = true
