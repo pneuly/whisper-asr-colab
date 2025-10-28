@@ -52,9 +52,8 @@ class SpeakerSegment:
         txt = ""
         if with_timestamp:
             txt += f"[{format_timestamp(start)} - {format_timestamp(end)}] "
-        if with_speaker and self.speaker:
-            txt += self.speaker if self.speaker else ""
-            txt += "\n"
+        if with_speaker:
+            txt += (self.speaker or "") + "\n"
         if with_text and self.text:
             txt += self.text.strip()
         return txt
