@@ -1,4 +1,4 @@
-faster-whisper@git+https://github.com/SYSTRAN/faster-whisper.git
+faster-whisper==1.2.0
 python-docx>=1
 yt-dlp
 ffmpeg-python>=0.2

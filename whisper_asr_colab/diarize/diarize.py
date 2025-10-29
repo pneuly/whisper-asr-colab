@@ -4,7 +4,7 @@ from importlib.metadata import version
 from typing import BinaryIO, Optional, Union
 
 from numpy import ndarray
-from packaging.version import parse
+from packaging.version import parse as parse_version
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
 from torch import device as torch_device
@@ -13,7 +13,7 @@ from torch.cuda import is_available as cuda_is_available
 
 from whisper_asr_colab.speakersegment import SpeakerSegment, SpeakerSegmentList
 
-USE_PYANNOTE4 = parse(version("pyannote.audio")) >= parse("4.0.0")
+USE_PYANNOTE4 = parse_version(version("pyannote.audio")) >= parse_version("4.0.0")
 PYANNOTE_MODEL = (
     "pyannote/speaker-diarization-community-1"
     if USE_PYANNOTE4
