@@ -12,6 +12,7 @@ nvidia-nvjitlink-cu12
 nvidia-nvtx-cu12
 nvidia-nccl-cu12
 numpy
+pandas
 opentelemetry-api
 opentelemetry-sdk
 opentelemetry-semantic-conventions
